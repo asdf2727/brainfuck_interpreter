@@ -22,12 +22,12 @@
 #	0x00 - exit the program
 #	0x08 A - jump to A if *ptr is 0 (used for open braket)
 #	0x10 A - jump to A if *ptr is NOT 0 (used for closed braket)
-#	0x18 A - add A to *ptr
+#	0x18 - set multipier
 #	0x20 A - add A to ptr
-#	0x28 - read byte into *ptr
-#	0x30 - write byte from *ptr
-#	0x38 - set multipier
-#	0x40 - add with multiplier
+#	0x28 A - add A to *ptr
+#	0x30 A - add A to *ptr with multiplier
+#	0x38 - read byte into *ptr
+#	0x40 - write byte from *ptr
 
 .data
 
@@ -65,29 +65,44 @@ parse_table_1:
 
 parse_table_2:
 .quad	parse_unknown
-.quad	parse_whitespace
-.quad	parse_plus
-.quad	parse_comma
-.quad	parse_minus
-.quad	parse_dot
-.quad	parse_less
-.quad	parse_greater
-.quad	parse_open
-.quad	parse_close
+.quad	base_parse_whitespace
+.quad	base_parse_plus
+.quad	base_parse_comma
+.quad	base_parse_minus
+.quad	base_parse_dot
+.quad	base_parse_less
+.quad	base_parse_greater
+.quad	base_parse_open
+.quad	base_parser_end
+
+parse_table_3:
+.quad	parse_unknown
+.quad	rec_parse_whitespace
+.quad	rec_parse_plus
+.quad	rec_parse_comma
+.quad	rec_parse_minus
+.quad	rec_parse_dot
+.quad	rec_parse_less
+.quad	rec_parse_greater
+.quad	rec_parse_open
+.quad	rec_parser_end
 
 save_table_1:
-.quad	42
+.quad	save_exit
 .quad	save_add
 .quad	save_move
 .quad	save_read
 .quad	save_write
+.quad	save_par_open
 
 run_table_1:
 .quad	op_exit
 .quad	op_je
 .quad	op_jne
-.quad	op_add
+.quad	op_mult
 .quad	op_move
+.quad	op_add
+.quad	op_add_mult
 .quad	op_read
 .quad	op_write
 
@@ -101,191 +116,263 @@ run_table_1:
 # stops the program and shows an error
 parse_unknown:
 	pushq	(%rdi, %rsi)
-	stdel
+	call	stdel
 	popq	%rsi
 	movq	$wrong_char_str, %rdi
 	call	printf_safe
+	movq	%rbp, %rsp
+	popq	%rbp
+	addq	$0x8, %rsp
 	jmp		brainunfucker_abort
 
+# --- BASE PARSER ---
+
 # ignore whitespace
-parse_whitespace:
-	jmp		rec_parser_loop_end
+base_parse_whitespace:
+	incq	%rsi
+	jmp		base_parser_loop
 
 # adds an "add" instruction to the stack or modifies the previous one
-parse_plus:
-	cmpq	$0x8, 0x8(%rsp)
+base_parse_plus:
+	cmpb	$0x8, -0x9(%r8, %r9)
 	je		parse_plus_reuse
-		subq	$0x10, %rsp
-		movq	$0x8, 0x8(%rsp)
-		movq	$0, (%rsp)
-	parse_plus_reuse:
-	incq	(%rsp)
-	jmp		rec_parser_loop_end
-parse_minus:
-	cmpq	$0x8, 0x8(%rsp)
+		stpushb	$0x8
+		stpushq	$0
+	base_parse_plus_reuse:
+	incq	-0x8(%r8, %r9)
+	incq	%rsi
+	jmp		base_parser_loop
+base_parse_minus:
+	cmpb	$0x8, -0x9(%r8, %r9)
 	je		parse_minus_reuse
-		subq	$0x10, %rsp
-		movq	$0x8, 0x8(%rsp)
-		movq	$0, (%rsp)
-	parse_minus_reuse:
-	decq	(%rsp)
-	jmp		rec_parser_loop_end
+		stpushb	$0x8
+		stpushq	$0
+	base_parse_minus_reuse:
+	decq	-0x8(%r8, %r9)
+	incq	%rsi
+	jmp		base_parser_loop
 # adds a "move" instruction to the stack or modifies the previous one
-parse_less:
-	cmpq	$0x10, 0x8(%rsp)
+base_parse_less:
+	cmpb	$0x10, -0x9(%r8, %r9)
 	je		parse_less_reuse
-		subq	$0x10, %rsp
-		movq	$0x10, 0x8(%rsp)
-		movq	$0, (%rsp)
-	parse_less_reuse:
-	decq	(%rsp)
-	jmp		rec_parser_loop_end
-parse_greater:
-	cmpq	$0x10, 0x8(%rsp)
+		stpushb	$0x10
+		stpushq	$0
+	base_parse_less_reuse:
+	incq	-0x8(%r8, %r9)
+	incq	%rsi
+	jmp		base_parser_loop
+base_parse_greater:
+	cmpb	$0x10, -0x9(%r8, %r9)
 	je		parse_greater_reuse
-		subq	$0x10, %rsp
-		movq	$0x10, 0x8(%rsp)
-		movq	$0, (%rsp)
-	parse_greater_reuse:
-	incq	(%rsp)
-	jmp		rec_parser_loop_end
+		stpushb	$0x10
+		stpushq	$0
+	base_parse_greater_reuse:
+	decq	-0x8(%r8, %r9)
+	incq	%rsi
+	jmp		base_parser_loop
 
 # adds a "read" instruction to the stack
-parse_comma:
-	pushq	$0x18
-	pushq	$0x0
-	jmp		rec_parser_loop_end
-# adds a "write" instruction to the stack
-parse_dot:
-	pushq	$0x20
-	pushq	$0x0
-	jmp		rec_parser_loop_end
-
-# saves all instruction to the heap, recursively calls rec_parser and adds two jump instructions directly to heap for "[" and "]"
-parse_open:
-	call	heap_saver
-
-	pushq	%r12
-	stpushb	$0x8
-	stpushq	$0
-	movq	%r9, %r12
+base_parse_comma:
+	stpushb	$0x18
+	stpushq	$0x0
 	incq	%rsi
+	jmp		base_parser_loop
+# adds a "write" instruction to the stack
+base_parse_dot:
+	stpushb	$0x20
+	stpushq	$0x0
+	incq	%rsi
+	jmp		base_parser_loop
+
+# saves all instructions to the heap, recursively calls rec_parser
+base_parse_open:
+	call	heap_saver
 	call	rec_parser
-	stpushb	$0x10
-	stpushq	%r12
-	movq	%r9, -0x8(%r8, %r12)
-	popq	%r12
+	incq	%rsi
+	jmp		base_parser_loop
 
-	cmpb	$0, (%rdi, %rsi)
-	je		parse_no_close
-	jmp		rec_parser_loop_end
-
-# exits the parse loop either for a "]" character or an end of string
-parse_close:
-	jmp		rec_parser_end
-
-rec_parser:
+base_parser:
 	pushq	%rbp
-	movq	%rbp, %
-	pushq	$0	# ptr shift count / valid characters flag
-	pushq	$0
-	pushq	%rbx
+	movq	%rbp, %rsp
+	stpushb	$0
+	stpushq	$0
 
-	movq	%rsp, %rbx
-	cmpb	$0, (%rdi, %rsi)
-	je		rec_parser_end
-	rec_parser_loop:
+	base_parser_loop:
 		movb	(%rdi, %rsi), %cl
 		movb	parse_table_1(%rcx), %cl
 		movq	parse_table_2(%rcx), %rax
 		jmp		*%rax
-		rec_parser_loop_end:
-		incq	%rsi
-		jne		rec_parser_loop
+	
+	base_parser_end:
+	cmpb	$91, (%rdi, %rsi)
+	je		no_open_par
 
-	rec_parser_end:
+	stpushb	$0x00
 	call	heap_saver
-	popq	%rbx
-	addq	$0x18, %rsp
+	
+	movq	%rbp, %rsp
+	popq	%rbp
 	ret
 
-rec_parser_optimised:
-	pushq	%rbp
-	movq	%rbp, %
-	pushq	$0	# ptr shift count / valid characters flag
-	pushq	$0
-	pushq	%rbx
-
-	movq	%rsp, %rbx
-	cmpb	$0, (%rdi, %rsi)
-	je		rec_parser_end
-	rec_parser_loop:
-		movb	(%rdi, %rsi), %cl
-		movb	parse_table_1(%rcx), %cl
-		movq	parse_table_2(%rcx), %rax
-		jmp		*%rax
-		rec_parser_loop_end:
-		incq	%rsi
-		jne		rec_parser_loop
-
-	rec_parser_end:
-	call	heap_saver
-	popq	%rbx
-	addq	$0x18, %rsp
-	ret
-
-# found extra closed paranthesis
-parse_no_open:
-	stdel
+no_open_par:
+	# found extra closed paranthesis
+	call	stdel
 	movq	$many_par_str, %rdi
 	call	printf_safe
 	jmp		brainunfucker_abort
-# found EOF before closing all parantheses
-parse_no_close:
-	stdel
+
+# --- REC PARSER ---
+
+# ignore whitespace
+rec_parse_whitespace:
+	incq	%rsi
+	jmp		rec_parser_loop
+
+# adds an "add" instruction to the stack or modifies the previous one
+rec_parse_plus:
+	cmpb	$0x8, -0x9(%r8, %r9)
+	je		parse_plus_reuse
+		stpushb	$0x8
+		stpushq	$0
+	rec_parse_plus_reuse:
+	incq	-0x8(%r8, %r9)
+	incq	%rsi
+	jmp		rec_parser_loop
+rec_parse_minus:
+	cmpb	$0x8, -0x9(%r8, %r9)
+	je		parse_minus_reuse
+		stpushb	$0x8
+		stpushq	$0
+	rec_parse_minus_reuse:
+	decq	-0x8(%r8, %r9)
+	incq	%rsi
+	jmp		rec_parser_loop
+# adds a "move" instruction to the stack or modifies the previous one
+rec_parse_less:
+	cmpb	$0x10, -0x9(%r8, %r9)
+	je		parse_less_reuse
+		stpushb	$0x10
+		stpushq	$0
+	rec_parse_less_reuse:
+	incq	-0x8(%r8, %r9)
+	incq	0x1(%r8)
+	incq	%rsi
+	jmp		rec_parser_loop
+rec_parse_greater:
+	cmpb	$0x10, -0x9(%r8, %r9)
+	je		parse_greater_reuse
+		stpushb	$0x10
+		stpushq	$0
+	rec_parse_greater_reuse:
+	decq	-0x8(%r8, %r9)
+	decq	0x1(%r8)
+	incq	%rsi
+	jmp		rec_parser_loop
+
+# adds a "read" instruction to the stack
+rec_parse_comma:
+	movb	$0, (%r8)
+	stpushb	$0x18
+	stpushq	$0x0
+	incq	%rsi
+	jmp		rec_parser_loop
+# adds a "write" instruction to the stack
+rec_parse_dot:
+	movb	$0, (%r8)
+	stpushb	$0x20
+	stpushq	$0x0
+	incq	%rsi
+	jmp		rec_parser_loop
+
+# saves all instructions to the heap, recursively calls rec_parser
+rec_parse_open:
+	movb	$0, (%r8)
+	call	heap_saver
+	call	rec_parser
+	incq	%rsi
+	jmp		rec_parser_loop
+
+rec_parser:
+	pushq	%rbp
+	movq	%rbp, %rsp
+	stpushb	$1
+	stpushq	$0
+
+	rec_parser_loop:
+		movb	(%rdi, %rsi), %cl
+		movb	parse_table_1(%rcx), %cl
+		movq	parse_table_3(%rcx), %rax
+		jmp		*%rax
+	
+	rec_parser_end:
+	cmpb	$91, (%rdi, %rsi)
+	jne		no_closed_par
+
+	cmpq	$0, 0x1(%r8)
+	je		rec_parser_save
+		movb	$0, (%r8)
+
+	rec_parser_save:
+	call	heap_saver
+	
+	movq	%rbp, %rsp
+	popq	%rbp
+	ret
+
+no_closed_par:
+	# found EOF before closing all parantheses
+	call	stdel
 	movq	$few_par_str, %rdi
 	call	printf_safe
 	jmp		brainunfucker_abort
 
 # --- HEAP SAVER ---
 
+save_end:
+	stpushb	$0x00
+	jmp		heap_saver_end
 save_add:
 	stpushb	$0x18
 	subq	$0x8, %rbx
 	movq	(%rbx), %rax
 	stpushb	%al
-	jmp		heap_saver_loop_end
+	jmp		heap_saver_loop
 save_move:
 	stpushb	$0x20
 	subq	$0x8, %rbx
 	movq	(%rbx), %rax
 	stpushq	%rax
-	jmp		heap_saver_loop_end
+	jmp		heap_saver_loop
 save_read:
 	stpushb	$0x28
 	subq	$0x8, %rbx
-	jmp		heap_saver_loop_end
+	jmp		heap_saver_loop
 save_write:
 	stpushb $0x30
 	subq	$0x8, %rbx
-	jmp		heap_saver_loop_end
+	jmp		heap_saver_loop
+save_par:
+	stpushb $0x08
+	subq	$0x8, %rbx
+	movq	(%rbx), %rax
+	stpushb	%al
 heap_saver:
-	pushq	%rbx
+	pushq	%rbp
 	leaq	0x10(%rsp), %rdx
-	cmpq	%rdx, %rbx
+	cmpq	%rdx, %rbp
 	je		heap_saver_end
 	heap_saver_loop:
-		subq	$0x8, %rbx
-		movq	(%rbx), %rcx
+		subq	$0x8, %rbp
+		movq	(%rbp), %rcx
 		movq	save_table_1(%rcx), %rax
 		jmp		*%rax
 		heap_saver_loop_end:
-		cmpq	%rdx, %rbx
+		cmpq	%rdx, %rbp
 		jne		heap_saver_loop
 	heap_saver_end:
-	popq	%rbx
+	popq	%rbp
 	popq	%rax
-	movq	%rbx, %rsp
+	movq	%rbp, %rsp
 	jmp		*%rax
 
 # --- INTERPRETER ---
@@ -347,7 +434,7 @@ op_write:
 	jmp		interpreter_loop
 
 interpreter_inf_loop:
-	stdel
+	call	stdel
 	movq	$inf_loop_str, %rdi
 	call	printf_safe
 	jmp		interpreter_end
@@ -368,7 +455,7 @@ interpreter:
 		jmp		*%rax
 
 	interpreter_end:
-	stdel
+	call	stdel
 	movq	%rbp, %rsp
 	popq	%rbp
 	ret

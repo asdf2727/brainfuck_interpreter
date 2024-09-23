@@ -1,14 +1,18 @@
-objects = build/main.o build/brainunfucker.o build/read_file.o
+build = obj/main.o obj/read_file.o obj/parser.o obj/interpreter.o obj/brainunfucker.o lib/obj/utils.o lib/obj/stk.o
 .PHONY: clean
 
-brainfuck: $(objects)
+brainfuck: $(build)
 	$(CC) -no-pie -o "$@" $^
 
-build:
-	mkdir build
+lib/obj:
+	mkdir lib/obj
+obj:
+	mkdir obj
 
-build/%.o: %.s | build
+lib/obj/%.o: lib/src/%.s | lib/obj
+	$(CC) -no-pie -c -o "$@" "$<"
+obj/%.o: src/%.s | obj
 	$(CC) -no-pie -c -o "$@" "$<"
 
 clean:
-	rm -rf brainfuck build
+	rm -rf brainfuck obj lib/obj
