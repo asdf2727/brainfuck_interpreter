@@ -1,7 +1,7 @@
 build = obj/main.o obj/read_file.o obj/parser.o obj/interpreter.o obj/brainunfucker.o lib/obj/utils.o lib/obj/stk.o
 .PHONY: clean
 
-brainfuck: $(build)
+bin/brainfuck: $(build)
 	$(CC) -no-pie -o "$@" $^
 
 lib/obj:
