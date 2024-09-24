@@ -50,7 +50,7 @@ no_closed_par:
 base_parser:
 	pushq	%rbx
 
-	pushq	$0
+	pushq	$1
 	pushq	$0
 	movq	%rsp, %rbx
 	movq	$0, %rcx
@@ -62,18 +62,18 @@ base_parser:
 		jmp		base_parser_loop
 	
 	base_parse_plus:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x20, 0x8(%rsp)
 		je		base_parse_plus_reuse
-			pushq	$0x28
+			pushq	$0x20
 			pushq	$0
 		base_parse_plus_reuse:
 		incq	(%rsp)
 		jmp		base_parser_loop
 	
 	base_parse_less:
-		cmpq	$0x30, 0x8(%rsp)
+		cmpq	$0x28, 0x8(%rsp)
 		je		base_parse_less_reuse
-			pushq	$0x30
+			pushq	$0x28
 			pushq	$0
 		base_parse_less_reuse:
 		decq	(%rsp)
@@ -87,18 +87,18 @@ base_parser_loop:
 	jmp		*%rax
 	
 	base_parse_greater:
-		cmpq	$0x30, 0x8(%rsp)
+		cmpq	$0x28, 0x8(%rsp)
 		je		base_parse_greater_reuse
-			pushq	$0x30
+			pushq	$0x28
 			pushq	$0
 		base_parse_greater_reuse:
 		incq	(%rsp)
 		jmp		base_parser_loop
 	
 	base_parse_minus:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x20, 0x8(%rsp)
 		je		base_parse_minus_reuse
-			pushq	$0x28
+			pushq	$0x20
 			pushq	$0
 		base_parse_minus_reuse:
 		decq	(%rsp)
@@ -126,6 +126,8 @@ base_parser_done:
 	leaq	0x10(%rbx), %rsp
 	popq	%rbx
 	ret
+
+.data
 
 base_parse_table:
 .quad	parse_unknown
@@ -161,38 +163,42 @@ ascii_parse_table:
 .byte	0x48	# ]
 .skip	162, 0
 
+.text
+
 # --- REC PARSER ---
 
 # parses a paranthesis, calling itself recursively for each nrumbe
 rec_parser:
 	pushq	%rbx
 
+	stpushb $0x20
+	stpushq	$0
 	pushq	%r9
 	pushq	$1
 	pushq	$0
+
 	movq	%rsp, %rbx
-	movq	$0, %rcx
 	jmp		rec_parser_loop
 
 	rec_parse_dot:
-		movq	$0, 0x8(%rbx)
+		movq	$1, 0x8(%rbx)
 		pushq	$0x18
 		pushq	$0x0
 		jmp		rec_parser_loop
 	
 	rec_parse_plus:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x20, 0x8(%rsp)
 		je		rec_parse_plus_reuse
-			pushq	$0x28
+			pushq	$0x20
 			pushq	$0
 		rec_parse_plus_reuse:
 		incq	(%rsp)
 		jmp		rec_parser_loop
 
 	rec_parse_less:
-		cmpq	$0x30, 0x8(%rsp)
+		cmpq	$0x28, 0x8(%rsp)
 		je		rec_parse_less_reuse
-			pushq	$0x30
+			pushq	$0x28
 			pushq	$0
 		rec_parse_less_reuse:
 		decq	(%rsp)
@@ -207,9 +213,9 @@ rec_parser_loop:
 	jmp		*%rax
 
 	rec_parse_greater:
-		cmpq	$0x30, 0x8(%rsp)
+		cmpq	$0x28, 0x8(%rsp)
 		je		rec_parse_greater_reuse
-			pushq	$0x30
+			pushq	$0x28
 			pushq	$0
 		rec_parse_greater_reuse:
 		incq	(%rsp)
@@ -217,22 +223,22 @@ rec_parser_loop:
 		jmp		rec_parser_loop
 	
 	rec_parse_minus:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x20, 0x8(%rsp)
 		je		rec_parse_minus_reuse
-			pushq	$0x28
+			pushq	$0x20
 			pushq	$0
 		rec_parse_minus_reuse:
 		decq	(%rsp)
 		jmp		rec_parser_loop
 	
 	rec_parse_open:
-		movq	$0, 0x8(%rbx)
+		movq	$1, 0x8(%rbx)
 		call	heap_saver
 		call	rec_parser
 		jmp		rec_parser_loop
 	
 	rec_parse_comma:
-		movq	$0, 0x8(%rbx)
+		movq	$1, 0x8(%rbx)
 		pushq	$0x10
 		pushq	$0x0
 		jmp		rec_parser_loop
@@ -241,28 +247,28 @@ rec_parser_done:
 	cmpb	$93, -0x1(%rdi)
 	jne		no_closed_par
 
-	cmpq	$0, (%rbx)
+	movq	(%rbx), %rax
+	orq		%rax, 0x8(%rbx)
+
 	jne		rec_parser_no_optimise
-	cmpq	$0, 0x8(%rbx)
-	je		rec_parser_no_optimise
-	
-rec_parser_optimise:
+		stpushb	$0x18
+	rec_parser_no_optimise:
+
 	call	heap_saver
+
+	movq	0x10(%rbx), %rax
+	movq	%r9, -0x8(%r8, %rax)
+	cmpq	$0, 0x8(%rbx)
+	je		rec_parser_optimise
+		stpushb	$0x28
+		stpushq	%rax
+	rec_parser_optimise:
+
 	leaq	0x18(%rbx), %rsp
 	popq	%rbx
 	ret
 
-rec_parser_no_optimise:
-	movq	$0, 0x8(%rbx)
-	call	heap_saver
-	stpushb	$0x28
-	movq	0x10(%rbx), %rax
-	movq	%r9, 0x1(%r8, %rax)
-	addq	$0x9, %rax
-	stpushq	%rax
-	leaq	0x18(%rbx), %rsp
-	popq	%rbx
-	ret
+.data
 
 rec_parse_table:
 .quad	parse_unknown
@@ -276,6 +282,8 @@ rec_parse_table:
 .quad	rec_parse_open
 .quad	rec_parser_done
 
+.text
+
 # --- SAVER ---
 
 heap_saver:
@@ -287,9 +295,14 @@ heap_saver:
 	save_write:
 		stpushb $0x10
 		jmp		heap_saver_loop
-	
+
 	save_add:
-		stpushb	$0x38
+		movq	$0x38, %rax
+		cmpq	$0, 0x8(%rbx)
+		jne		save_add_no_mult
+			subq	$0x8, %rax
+		save_add_no_mult:
+		stpushb	%al
 		movq	(%rdx), %rax
 		stpushb	%al
 		jmp		heap_saver_loop
@@ -299,17 +312,11 @@ heap_saver_loop:
 	movq	0x8(%rdx), %rax
 	movq	save_table(%rax), %rax
 	jmp		*%rax
-	
+
 	save_move:
 		stpushb	$0x40
 		movq	(%rdx), %rax
 		stpushq	%rax
-		jmp		heap_saver_loop
-	
-	save_par:
-		stpushb $0x20
-		movq	(%rdx), %rax
-		stpushb	%al
 		jmp		heap_saver_loop
 
 	save_read:
@@ -328,6 +335,5 @@ save_table:
 .quad	heap_saver_end	# 0x08
 .quad	save_read		# 0x10
 .quad	save_write		# 0x18
-.quad	save_par		# 0x20
-.quad	save_add		# 0x28
-.quad	save_move		# 0x30
+.quad	save_add		# 0x20
+.quad	save_move		# 0x28

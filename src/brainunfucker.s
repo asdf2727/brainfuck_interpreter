@@ -45,6 +45,9 @@ brainunfucker:
 	# parse the code
 	call	base_parser
 
+	cmpb	$0, (%rdi)
+	jne		brainunfucker_end	# something went wrong, abort
+
 	# run the intermedeary
 	call	interpreter
 
@@ -55,7 +58,6 @@ brainunfucker:
 	movq	$1, %rdi	# to stdout
 	movq	$1, %rdx	# 1 char
 	syscall
-	jmp		brainunfucker_end
 
 	brainunfucker_end:
 	movq %rbp, %rsp

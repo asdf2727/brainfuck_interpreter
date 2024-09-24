@@ -15,4 +15,4 @@ obj/%.o: src/%.s | obj
 	$(CC) -no-pie -c -o "$@" "$<"
 
 clean:
-	rm -rf brainfuck obj lib/obj
+	rm -rf obj lib/obj

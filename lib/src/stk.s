@@ -6,11 +6,11 @@
 # init a stack
 .global	stinit
 stinit:
-	movq	$0x8, %rdi
+	movq	$0x10, %rdi
 	call	malloc
 	movq	%rax, %r8
 	movq	$0, %r9
-	movq	$0x7, %r10
+	movq	$0xf, %r10
 	ret
 
 # delete the stack
@@ -18,6 +18,7 @@ stinit:
 stdel:
 	movq	%r8, %rdi
 	call	free
+	ret
 
 # check if stack is full
 .global	stinc
@@ -26,15 +27,17 @@ stinc:
 	cmpq	%r10, %r9
 	jle		stinc_norecast
 
-		caller_save
+		pushq	%rdi
+		pushq	%rsi
 
-		movq	%r10, %r9
-		# rdi = r11 * 2 + 1
-		movq	$0, %rdi
-		leaq	1(%rdi, %r10, 2), %rdi
+		leaq	1(%r10), %rdi
+		movq	%rdi, %rsi
+		shlq	$1, %rdi
+		shrq	$3, %rsi
 		call	strecast
 
-		caller_restore
+		popq	%rsi
+		popq	%rdi
 
 	stinc_norecast:
 	ret
@@ -42,56 +45,65 @@ stinc:
 # check if the stack is quarter full
 .global	stdec
 stdec:
+	# recast if end - begin < size / 4 (if the stack is quarter full)
 	push	%rdi
-	# recast if (end - begin - rdi) * 4 < size (if the stack is quarter full)
-	movq	%r9, %rdi
-	shlq	$2, %rdi
-	cmpq	%r10, %rdi
+
+	leaq	1(%r10), %rdi
+	shrq	$2, %rdi
+	cmpq	%rdi, %r9
 	jg		stdec_norecast
 
-		# do not resize if under 8 bytes
-		cmpq	$8, %r10
-		jl		stinc_norecast
+	# do not resize if 16 bytes or under
+	cmpq	$0xf, %r10
+	jle		stdec_norecast
 
-		caller_save
+		pushq	%rsi
 
-		# rdi = r11 >> 1
-		movq	%r10, %rdi
-		shrq	$1, %rdi
+		movq	%rdi, %rsi
+		shlq	$1, %rdi
+		shrq	$3, %rsi
 		call	strecast
 		
-		caller_restore
+		popq	%rsi
 
 	stdec_norecast:
 	popq	%rdi
 	ret
 
-# recast the stack to have %rdi size
+# recast the stack to have a new size
+# %rdi - the new size of the stack in bytes
+# %rsi - the number of quads to copy from the old stack
 .global	strecast
 strecast:
+	pushq	%rax
+	pushq	%rcx
+	pushq	%rdx
+	pushq	%r11
+
 	pushq	%rdi
-	pushq	%r8
 	pushq	%r9
 
-	incq	%rdi
-	call	malloc
+		pushq	%r8
+		pushq	%rsi
+			call	malloc
+		popq	%rcx
+		popq	%rsi
+
+		movq	%rax, %rdi
+		movq	%rsi, %rdx
+		rep	movsq
+		movq	%rdx, %rdi
+
+		pushq	%rax
+			call	free
+		popq	%r8
 
 	popq	%r9
-	popq	%r8
-
-	movq	%r8, %rsi
-	movq	%rax, %rdi
-	movq	%r9, %rcx
-	rep	movsb
-
-	movq	%r8, %rdi
-	movq	%rax, %r8
-
-	pushq	%r8
-	pushq	%r9
-	call	free
-	popq	%r9
-	popq	%r8
-
 	popq	%r10
+	decq	%r10
+	
+	popq	%r11
+	popq	%rdx
+	popq	%rcx
+	popq	%rax
 	ret
