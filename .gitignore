@@ -1,3 +1,5 @@
 bin/
 brainfuck_given/
 cse1400-brainfuck(1).tar.gz
+perf.data
+perf.data.old

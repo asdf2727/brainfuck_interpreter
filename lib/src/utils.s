@@ -1,5 +1,6 @@
 .data
 
+.global debug_out
 debug_out: .asciz "DEBUG: %ld\n"
 
 .text

@@ -58,6 +58,7 @@ brainunfucker:
 	movq	$1, %rdi	# to stdout
 	movq	$1, %rdx	# 1 char
 	syscall
+	addq	$0x8, %rsp
 
 	brainunfucker_end:
 	movq %rbp, %rsp

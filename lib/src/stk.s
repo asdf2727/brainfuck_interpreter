@@ -1,6 +1,5 @@
 .text
 
-.include "lib/inc/utils.s"
 .include "lib/inc/stk.s"
 
 # init a stack
