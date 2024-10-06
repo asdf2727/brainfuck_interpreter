@@ -19,6 +19,33 @@ stdel:
 	call	free
 	ret
 
+# resize the stack to have %rdi bytes size
+# overwrites %rcx, %rdi, %rsi
+.global stresize
+stresize:
+	# min of r9 and rdi in rsi
+	movq	%r9, %rsi
+	cmpq	%rdi, %rsi
+	cmovg	%rdi, %rsi
+	# get size in quads
+	addq	$7, %rsi
+	shrq	$3, %rsi
+	
+	# set new size
+	movq	%rdi, %r9
+
+	# new container size
+	bsrq	%rdi, %rcx
+	movq	$2, %rdi
+	shlq	%cl, %rdi
+
+	# recast if not equal
+	leaq	-1(%rdi), %rcx
+	cmpq	%rcx, %r10
+	jne		strecast
+
+	ret
+
 # check if stack is full
 .global	stinc
 stinc:
@@ -72,7 +99,6 @@ stdec:
 # recast the stack to have a new size
 # %rdi - the new size of the stack in bytes
 # %rsi - the number of quads to copy from the old stack
-.global	strecast
 strecast:
 	pushq	%rax
 	pushq	%rcx

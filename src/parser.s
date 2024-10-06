@@ -22,7 +22,7 @@ parse_unknown:
 	popq	%rsi
 	movq	$wrong_char_str, %rdi
 	call	printf_safe
-	movq	%rbp, %rsp
+	movq	%r11, %rsp
 	popq	%rbp
 	ret
 
@@ -31,7 +31,7 @@ no_open_par:
 	call	stdel
 	movq	$many_par_str, %rdi
 	call	printf_safe
-	movq	%rbp, %rsp
+	movq	%r11, %rsp
 	popq	%rbp
 	ret
 
@@ -40,7 +40,7 @@ no_closed_par:
 	call	stdel
 	movq	$few_par_str, %rdi
 	call	printf_safe
-	movq	%rbp, %rsp
+	movq	%r11, %rsp
 	popq	%rbp
 	ret
 
@@ -87,11 +87,12 @@ base_parse_table:
 # parses the initial string, calling rec_solver for each paranthesis
 .global base_parser
 base_parser:
-	pushq	%rbx
+	movq	%rbp, %r11
+	pushq	%rbp
+	movq	%rsp, %rbp
 
-	pushq	$1
 	pushq	$0
-	movq	%rsp, %rbx
+	pushq	$0
 	movq	$0, %rcx
 
 base_parser_loop:
@@ -102,34 +103,34 @@ base_parser_loop:
 	jmp		*%rax
 	
 	base_parse_less:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x08, 0x8(%rsp)
 		je		base_parse_less_reuse
-			pushq	$0x28
+			pushq	$0x08
 			pushq	$0
 		base_parse_less_reuse:
 		decq	(%rsp)
 		jmp		base_parser_loop
 	base_parse_greater:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x08, 0x8(%rsp)
 		je		base_parse_greater_reuse
-			pushq	$0x28
+			pushq	$0x08
 			pushq	$0
 		base_parse_greater_reuse:
 		incq	(%rsp)
 		jmp		base_parser_loop
 	
 	base_parse_minus:
-		cmpq	$0x20, 0x8(%rsp)
+		cmpq	$0x10, 0x8(%rsp)
 		je		base_parse_minus_reuse
-			pushq	$0x20
+			pushq	$0x10
 			pushq	$0
 		base_parse_minus_reuse:
 		decq	(%rsp)
 		jmp		base_parser_loop
 	base_parse_plus:
-		cmpq	$0x20, 0x8(%rsp)
+		cmpq	$0x10, 0x8(%rsp)
 		je		base_parse_plus_reuse
-			pushq	$0x20
+			pushq	$0x10
 			pushq	$0
 		base_parse_plus_reuse:
 		incq	(%rsp)
@@ -145,21 +146,21 @@ base_parser_loop:
 		pushq	$0x0
 		jmp		base_parser_loop
 	base_parse_comma:
-		pushq	$0x10
+		pushq	$0x20
 		pushq	$0x0
 		jmp		base_parser_loop
 	
 base_parser_done:
-	decq	%rdi
-	cmpb	$93, (%rdi)
+	cmpb	$93, -0x1(%rdi)
 	je		no_open_par
 
-	pushq	$0x00
-	pushq	$0
 	call	heap_saver
 
-	leaq	0x10(%rbx), %rsp
-	popq	%rbx
+#	ret
+	stpushb	$0xC3	# near ret
+
+	movq	%rbp, %rsp
+	popq	%rbp
 	ret
 
 # --- REC PARSER ---
@@ -182,17 +183,20 @@ rec_parse_table:
 
 # parses a paranthesis, calling itself recursively for each nrumbe
 rec_parser:
-	pushq	%rbx
+	pushq	%rbp
+	movq	%rsp, %rbp
 
-	stpushb $0x20
-	stpushq	$0
-	pushq	$1
+	pushq	$0
 	pushq	%r9
-
-	movq	$0, %rdx	# pointer shift count
-	movq	$0, %r11	# value shift count
-
-	movq	%rsp, %rbx
+	
+#	cmpb	$0, (%rax)
+	stpushb	$0x80	# CMP r/m8, imm8
+	stpushb	$0x38	# \7, [RAX]
+	stpushb	$0		# ib
+#	je		end_loop
+	stpushb $0x0F	# near jump
+	stpushb $0x84	# je
+	stpushl	$0		# cd
 
 rec_parser_loop:
 	movb	(%rdi), %cl
@@ -202,63 +206,50 @@ rec_parser_loop:
 	jmp		*%rax
 
 	rec_parse_less:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x08, 0x8(%rsp)
 		je		rec_parse_less_reuse
-			pushq	$0x28
+			pushq	$0x08
 			pushq	$0
 		rec_parse_less_reuse:
 		decq	(%rsp)
-		decq	%rdx
 		jmp		rec_parser_loop
 	rec_parse_greater:
-		cmpq	$0x28, 0x8(%rsp)
+		cmpq	$0x08, 0x8(%rsp)
 		je		rec_parse_greater_reuse
-			pushq	$0x28
+			pushq	$0x08
 			pushq	$0
 		rec_parse_greater_reuse:
 		incq	(%rsp)
-		incq	%rdx
 		jmp		rec_parser_loop
 	
 	rec_parse_plus:
-		cmpq	$0x20, 0x8(%rsp)
+		cmpq	$0x10, 0x8(%rsp)
 		je		rec_parse_plus_reuse
-			pushq	$0x20
+			pushq	$0x10
 			pushq	$0
 		rec_parse_plus_reuse:
 		incq	(%rsp)
-		cmpq	$0, %rdx
-		jne		rec_parser_plus_shifted
-			incq	%r11
-		rec_parser_plus_shifted:
 		jmp		rec_parser_loop
 	rec_parse_minus:
-		cmpq	$0x20, 0x8(%rsp)
+		cmpq	$0x10, 0x8(%rsp)
 		je		rec_parse_minus_reuse
-			pushq	$0x20
+			pushq	$0x10
 			pushq	$0
 		rec_parse_minus_reuse:
 		decq	(%rsp)
-		cmpq	$0, %rdx
-		jne		rec_parser_minus_shifted
-			decq	%r11
-		rec_parser_minus_shifted:
 		jmp		rec_parser_loop
 	
 	rec_parse_open:
-		movq	$1, 0x8(%rbx)
 		call	heap_saver
 		call	rec_parser
 		jmp		rec_parser_loop
 	
 	rec_parse_dot:
-		movq	$1, 0x8(%rbx)
 		pushq	$0x18
 		pushq	$0x0
 		jmp		rec_parser_loop
 	rec_parse_comma:
-		movq	$1, 0x8(%rbx)
-		pushq	$0x10
+		pushq	$0x20
 		pushq	$0x0
 		jmp		rec_parser_loop
 
@@ -266,35 +257,62 @@ rec_parser_done:
 	cmpb	$93, -0x1(%rdi)
 	jne		no_closed_par
 
-	orq		0x8(%rbx), %rdx
-	jne		rec_parser_no_optimise
-		# printf_debug	%r11
-		stpushb	$0x18
-		stpushb	%r11b
-	rec_parser_no_optimise:
-
 	call	heap_saver
 
-	movq	(%rbx), %rax
-	movq	%r9, -0x8(%r8, %rax)
+#	cmpb	$0, (%rax)
+	stpushb	$0x80	# CMP r/m8, imm8
+	stpushb	$0x38	# \7, [RAX]
+	stpushb	$0		# ib
 
-	cmpq	$0, %rdx
-	je		rec_parser_optimise
-		stpushb	$0x28
-		stpushq	%rax
-	rec_parser_optimise:
+	movq	-0x10(%rbp), %rax
+	leaq	5(%rax), %rdx
+	subq	%r9, %rax
+	addq	$3, %rax
 
-	leaq	0x10(%rbx), %rsp
-	popq	%rbx
+#	jne		begin_loop
+	stpushb $0x0F	# near jump
+	stpushb $0x85	# jne
+	stpushl	%eax	# cd
+
+	# fix je from the beginning of the loop
+	negq	%rax
+	movl	%eax, (%r8, %rdx)
+
+	movq	%rbp, %rsp
+	popq	%rbp
 	ret
 
 # --- SAVER ---
 
+.data
+
+save_table:
+.quad	heap_saver_end	# 0x00
+.quad	save_move		# 0x08
+.quad	save_add		# 0x10
+.quad	save_write		# 0x18
+.quad	save_read		# 0x20
+
+write_code:
+	pushq	%rax
+	movq	%rax, %rsi		# from rax
+	movq	$1, %rax		# write
+	movq	$1, %rdi		# to stdout
+	movq	$1, %rdx		# 1 char
+	syscall
+	popq	%rax
+write_code_end:
+
+read_code:
+	# TODO read from stdint with syscall
+read_code_end:
+
+.text
+
 heap_saver:
 	pushq	(%rsp)
-	movq	$0x08, 0x8(%rsp)
-	movq	%rbx, %rdx
-	jmp		heap_saver_loop
+	movq	$0x00, 0x8(%rsp)
+	leaq	-0x10(%rbp), %rdx
 
 heap_saver_loop:
 	subq	$0x10, %rdx
@@ -303,41 +321,45 @@ heap_saver_loop:
 	jmp		*%rax
 
 	save_move:
-		stpushb	$0x40
+	#	subq	%rax, \VAL
+		stpushb	$0x48	# REX
+		stpushb	$0x2D	# SUB RAX, imm32
 		movq	(%rdx), %rax
-		stpushq	%rax
+		stpushl	%eax	# id
 		jmp		heap_saver_loop
 
 	save_add:
-		movq	$0x38, %rax
-		cmpq	$0, 0x8(%rbx)
-		jne		save_add_no_mult
-			subq	$0x8, %rax
-		save_add_no_mult:
-		stpushb	%al
+	#	addb	(%rax), \VAL
+		# stpushb	$0x48	# REX
+		stpushb	$0x80	# ADD r/m8, imm8
+		stpushb	$0x00	# \0, [RAX]
 		movq	(%rdx), %rax
-		stpushb	%al
+		stpushb	%al		# ib
+		jmp		heap_saver_loop
+
+	save_write:
+		pushq	%rdi
+			leaq	write_code_end - write_code(%r9), %rdi
+			call	stresize
+			leaq	write_code - write_code_end(%r8, %r9), %rdi
+			movq	$(write_code_end - write_code), %rcx
+			movq	$write_code, %rsi
+			rep movsb
+		popq	%rdi
 		jmp		heap_saver_loop
 
 	save_read:
-		stpushb	$0x08
-		jmp		heap_saver_loop
-	
-	save_write:
-		stpushb $0x10
+		pushq	%rdi
+			leaq	read_code_end - read_code(%r9), %rdi
+			call	stresize
+			leaq	read_code - read_code_end(%r8, %r9), %rdi
+			movq	$(read_code_end - read_code), %rcx
+			movq	$read_code, %rsi
+			rep movsb
+		popq	%rdi
 		jmp		heap_saver_loop
 
-save_exit:
-	stpushb	$0x00
 heap_saver_end:
 	movq	(%rsp), %rax
-	movq	%rbx, %rsp
+	leaq	-0x10(%rbp), %rsp
 	jmp		*%rax
-
-save_table:
-.quad	save_exit		# 0x00
-.quad	heap_saver_end	# 0x08
-.quad	save_read		# 0x10
-.quad	save_write		# 0x18
-.quad	save_add		# 0x20
-.quad	save_move		# 0x28

@@ -29,16 +29,6 @@ interpreter:
 	movq	$0, %rdi		# instruction counter
 	leaq	-1(%rsp), %rsi	# memory counter
 	pushq	$0				# create memory block 0
-	jmp		interpreter_loop
-
-	op_jne:
-		addq	$9, %rdi
-		movb	(%rsi), %cl
-		cmpb	$0, %cl
-		je		op_jne_no_jump
-			movq	-8(%r8, %rdi), %rdi
-		op_jne_no_jump:
-		jmp		interpreter_loop
 
 interpreter_loop:
 	movb	(%r8, %rdi), %cl
@@ -71,6 +61,15 @@ interpreter_loop:
 		jne		op_je_no_jump
 			movq	-8(%r8, %rdi), %rdi
 		op_je_no_jump:
+		jmp		interpreter_loop
+
+	op_jne:
+		addq	$9, %rdi
+		movb	(%rsi), %cl
+		cmpb	$0, %cl
+		je		op_jne_no_jump
+			movq	-8(%r8, %rdi), %rdi
+		op_jne_no_jump:
 		jmp		interpreter_loop
 
 	op_add_mult:

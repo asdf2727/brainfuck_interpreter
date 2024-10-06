@@ -45,11 +45,52 @@ brainunfucker:
 	# parse the code
 	call	base_parser
 
-	cmpb	$0, (%rdi)
+	cmpb	$0, -0x1(%rdi)
 	jne		brainunfucker_end	# something went wrong, abort
 
-	# run the intermedeary
-	call	interpreter
+	subq	$0x18, %rsp
+	stsave	%rsp
+	# create new mapping
+	movq	$9, %rax
+	movq	$0, %rdi
+	movq	-0x10(%rbp), %rsi
+	movq	$3, %rdx
+	movq	$33, %r10
+	movq	$-1, %r8
+	movq	$0, %r9
+	syscall
+	pushq	%rax
+	# copy code
+	movq	-0x10(%rbp), %rcx
+	movq	-0x18(%rbp), %rsi
+	movq	%rax, %rdi
+	rep movsb
+	# change permissions
+	movq	%rax, %rdi
+	movq	$10, %rax
+	movq	-0x10(%rbp), %rsi
+	movq	$5, %rdx
+	syscall
+	# run code
+	movq	-0x20(%rbp), %rdx
+	subq	$0x8000, %rsp
+	movq	$0x1000, %rcx
+	movq	%rsp, %rdi
+	movq	$0, %rax
+	rep stosq
+	leaq	-0x21(%rbp), %rax
+	brainunfucker_call_code:
+	call	*%rdx
+	addq	$0x8000, %rsp
+	# delete new mapping
+	movq	$11, %rax
+	popq	%rdi
+	movq	-0x10(%rbp), %rsi
+	syscall
+	# free heap
+	stload	%rsp
+	call	stdel
+	addq	$0x18, %rsp
 
 	# print an extra \n
 	pushq	$10			# \n
