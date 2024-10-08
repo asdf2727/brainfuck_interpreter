@@ -46,9 +46,10 @@ runcode:
 	# run code
 	movq	$1, %rdi
 	movq	$1, %rdx
+	movq	$0, %rax
 	movq	%rsp, %rbx
-	call_code:
 	pushq	%r8
+	call_code:
 	call	*%r8
 	popq	%r8
 	

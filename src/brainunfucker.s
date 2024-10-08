@@ -41,7 +41,7 @@
 #	[ ] bring back multiplier to optimise loops
 #		eventually only optimise loops with +- 1 in checked pointer to reduce 
 #	[ ] benchmark memory usage and caching for both versions of sunca
-#	[ ] use registers for loops with low number of registers (maybe???)
+#	[ ] use registers for loops with low number of positions modified (maybe???)
 #	[x] prepare syscall registers IN ADVANCE to avoid wasting instructions on mov $1, %reg
 #	[ ] use offset for write/read instructions
 #	[ ] use buffering for output to avoid using syscalls too many times
