@@ -188,9 +188,9 @@ rec_parser:
 	pushq	$0
 	pushq	$0
 	
-#	cmpb	$0, (%rax)
+#	cmpb	$0, (%rbx)
 	stpushb	$0x80	# CMP r/m8, imm8
-	stpushb	$0x38	# \7, [RAX]
+	stpushb	$0x3B	# /7 [EBX]
 	stpushb	$0		# ib
 #	je		end_loop
 	stpushb $0x0F	# near jump
@@ -250,9 +250,9 @@ rec_parser_done:
 
 	call	save_adds
 
-#	cmpb	$0, (%rax)
+#	cmpb	$0, (%rbx)
 	stpushb	$0x80	# CMP r/m8, imm8
-	stpushb	$0x38	# \7, [RAX]
+	stpushb	$0x3B	# /7 [EBX]
 	stpushb	$0		# ib
 
 	movq	-0x8(%rbp), %rax
@@ -278,13 +278,9 @@ rec_parser_done:
 .data
 
 write_code:
-	pushq	%rax
-	movq	%rax, %rsi		# from rax
-	movq	$1, %rax		# write
-	movq	$1, %rdi		# to stdout
-	movq	$1, %rdx		# 1 char
+	movq	$1, %rax
+	movq	%rbx, %rsi
 	syscall
-	popq	%rax
 write_code_end:
 
 read_code:
@@ -323,9 +319,9 @@ save_adds:
 	save_adds_loop:
 		cmpb	$0, -0x8(%rdx)
 		je		save_adds_end_loop
-		#	addq	\OFFSET(%rax), \VAL
-			stpushb	$0x80	# ADD r/m8, imm8	# TODO
-			stpushb	$0x80	# \0 [EAX]+disp32
+		#	addq	\VAL, \OFFSET(%rbx)
+			stpushb	$0x80	# ADD r/m8, imm8
+			stpushb	$0x83	# \0 [EBX]+disp32
 			movq	(%rdx), %rax
 			stpushl	%eax	# disp32
 			movq	-0x8(%rdx), %rax
@@ -339,11 +335,13 @@ save_adds:
 save_adds_move:
 	cmpq	$0, -0x10(%rbp)
 	je		save_adds_done
-	#	addq	%rax, \VAL
-		stpushb	$0x48	# REX
-		stpushb	$0x05	# ADD RAX, imm32
+	#	addq	\VAL, %rbx
+		stpushb $0x48	# REX
+		stpushb	$0x81	# ADD r/m8, imm8
+		stpushb	$0xC3	# \0 EBX
 		movq	-0x10(%rbp), %rax
 		stpushl	%eax	# id
+		
 		movq	$0, -0x10(%rbp)
 
 save_adds_done:
