@@ -93,6 +93,10 @@ base_parser:
 
 	pushq	$0
 	pushq	$0
+
+	pushq	$0
+	pushq	$0
+
 	movq	$0, %rcx
 
 base_parser_loop:
@@ -103,58 +107,50 @@ base_parser_loop:
 	jmp		*%rax
 	
 	base_parse_less:
-		cmpq	$0x08, 0x8(%rsp)
-		je		base_parse_less_reuse
-			pushq	$0x08
-			pushq	$0
-		base_parse_less_reuse:
-		decq	(%rsp)
+		decq	-0x10(%rbp)
 		jmp		base_parser_loop
 	base_parse_greater:
-		cmpq	$0x08, 0x8(%rsp)
-		je		base_parse_greater_reuse
-			pushq	$0x08
-			pushq	$0
-		base_parse_greater_reuse:
-		incq	(%rsp)
+		incq	-0x10(%rbp)
 		jmp		base_parser_loop
 	
-	base_parse_minus:
-		cmpq	$0x10, 0x8(%rsp)
-		je		base_parse_minus_reuse
-			pushq	$0x10
-			pushq	$0
-		base_parse_minus_reuse:
-		decq	(%rsp)
-		jmp		base_parser_loop
 	base_parse_plus:
-		cmpq	$0x10, 0x8(%rsp)
+		movq	-0x10(%rbp), %rax
+		cmpq	0x8(%rsp), %rax
 		je		base_parse_plus_reuse
-			pushq	$0x10
+			pushq	%rax
 			pushq	$0
 		base_parse_plus_reuse:
 		incq	(%rsp)
 		jmp		base_parser_loop
+	base_parse_minus:
+		movq	-0x10(%rbp), %rax
+		cmpq	0x8(%rsp), %rax
+		je		base_parse_minus_reuse
+			pushq	%rax
+			pushq	$0
+		base_parse_minus_reuse:
+		decq	(%rsp)
+		jmp		base_parser_loop
 	
 	base_parse_open:
-		call	heap_saver
+		call	save_adds
 		call	rec_parser
 		jmp		base_parser_loop
 	
 	base_parse_dot:
-		pushq	$0x18
-		pushq	$0x0
+		call	save_adds
+		call	save_write
 		jmp		base_parser_loop
 	base_parse_comma:
-		pushq	$0x20
-		pushq	$0x0
+		call	save_adds
+		call	save_read
 		jmp		base_parser_loop
 	
 base_parser_done:
 	cmpb	$93, -0x1(%rdi)
 	je		no_open_par
 
-	call	heap_saver
+	call	save_adds
 
 #	ret
 	stpushb	$0xC3	# near ret
@@ -186,8 +182,11 @@ rec_parser:
 	pushq	%rbp
 	movq	%rsp, %rbp
 
-	pushq	$0
 	pushq	%r9
+	pushq	$0
+
+	pushq	$0
+	pushq	$0
 	
 #	cmpb	$0, (%rax)
 	stpushb	$0x80	# CMP r/m8, imm8
@@ -206,65 +205,57 @@ rec_parser_loop:
 	jmp		*%rax
 
 	rec_parse_less:
-		cmpq	$0x08, 0x8(%rsp)
-		je		rec_parse_less_reuse
-			pushq	$0x08
-			pushq	$0
-		rec_parse_less_reuse:
-		decq	(%rsp)
+		decq	-0x10(%rbp)
 		jmp		rec_parser_loop
 	rec_parse_greater:
-		cmpq	$0x08, 0x8(%rsp)
-		je		rec_parse_greater_reuse
-			pushq	$0x08
-			pushq	$0
-		rec_parse_greater_reuse:
-		incq	(%rsp)
+		incq	-0x10(%rbp)
 		jmp		rec_parser_loop
 	
 	rec_parse_plus:
-		cmpq	$0x10, 0x8(%rsp)
+		movq	-0x10(%rbp), %rax
+		cmpq	0x8(%rsp), %rax
 		je		rec_parse_plus_reuse
-			pushq	$0x10
+			pushq	%rax
 			pushq	$0
 		rec_parse_plus_reuse:
 		incq	(%rsp)
 		jmp		rec_parser_loop
 	rec_parse_minus:
-		cmpq	$0x10, 0x8(%rsp)
+		movq	-0x10(%rbp), %rax
+		cmpq	0x8(%rsp), %rax
 		je		rec_parse_minus_reuse
-			pushq	$0x10
+			pushq	%rax
 			pushq	$0
 		rec_parse_minus_reuse:
 		decq	(%rsp)
 		jmp		rec_parser_loop
 	
 	rec_parse_open:
-		call	heap_saver
+		call	save_adds
 		call	rec_parser
 		jmp		rec_parser_loop
 	
 	rec_parse_dot:
-		pushq	$0x18
-		pushq	$0x0
+		call	save_adds
+		call	save_write
 		jmp		rec_parser_loop
 	rec_parse_comma:
-		pushq	$0x20
-		pushq	$0x0
+		call	save_adds
+		call	save_read
 		jmp		rec_parser_loop
 
 rec_parser_done:
 	cmpb	$93, -0x1(%rdi)
 	jne		no_closed_par
 
-	call	heap_saver
+	call	save_adds
 
 #	cmpb	$0, (%rax)
 	stpushb	$0x80	# CMP r/m8, imm8
 	stpushb	$0x38	# \7, [RAX]
 	stpushb	$0		# ib
 
-	movq	-0x10(%rbp), %rax
+	movq	-0x8(%rbp), %rax
 	leaq	5(%rax), %rdx
 	subq	%r9, %rax
 	addq	$3, %rax
@@ -286,13 +277,6 @@ rec_parser_done:
 
 .data
 
-save_table:
-.quad	heap_saver_end	# 0x00
-.quad	save_move		# 0x08
-.quad	save_add		# 0x10
-.quad	save_write		# 0x18
-.quad	save_read		# 0x20
-
 write_code:
 	pushq	%rax
 	movq	%rax, %rsi		# from rax
@@ -309,57 +293,62 @@ read_code_end:
 
 .text
 
-heap_saver:
-	pushq	(%rsp)
-	movq	$0x00, 0x8(%rsp)
-	leaq	-0x10(%rbp), %rdx
+save_write:
+	pushq	%rdi
+		leaq	write_code_end - write_code(%r9), %rdi
+		call	stresize
+		leaq	write_code - write_code_end(%r8, %r9), %rdi
+		movq	$(write_code_end - write_code), %rcx
+		movq	$write_code, %rsi
+		rep movsb
+	popq	%rdi
+	ret
 
-heap_saver_loop:
-	subq	$0x10, %rdx
-	movq	0x8(%rdx), %rax
-	movq	save_table(%rax), %rax
-	jmp		*%rax
+save_read:
+	pushq	%rdi
+		leaq	read_code_end - read_code(%r9), %rdi
+		call	stresize
+		leaq	read_code - read_code_end(%r8, %r9), %rdi
+		movq	$(read_code_end - read_code), %rcx
+		movq	$read_code, %rsi
+		rep movsb
+	popq	%rdi
+	ret
 
-	save_move:
-	#	subq	%rax, \VAL
+save_adds:
+	leaq	-0x18(%rbp), %rdx
+
+	cmpq	%rdx, %rsp
+	jge		save_adds_move
+	save_adds_loop:
+		cmpb	$0, -0x8(%rdx)
+		je		save_adds_end_loop
+		#	addq	\OFFSET(%rax), \VAL
+			stpushb	$0x80	# ADD r/m8, imm8	# TODO
+			stpushb	$0x80	# \0 [EAX]+disp32
+			movq	(%rdx), %rax
+			stpushl	%eax	# disp32
+			movq	-0x8(%rdx), %rax
+			stpushb %al		# ib
+		save_adds_end_loop:
+
+		subq	$0x10, %rdx
+		cmpq	%rdx, %rsp
+		jl		save_adds_loop
+
+save_adds_move:
+	cmpq	$0, -0x10(%rbp)
+	je		save_adds_done
+	#	addq	%rax, \VAL
 		stpushb	$0x48	# REX
-		stpushb	$0x2D	# SUB RAX, imm32
-		movq	(%rdx), %rax
+		stpushb	$0x05	# ADD RAX, imm32
+		movq	-0x10(%rbp), %rax
 		stpushl	%eax	# id
-		jmp		heap_saver_loop
+		movq	$0, -0x10(%rbp)
 
-	save_add:
-	#	addb	(%rax), \VAL
-		# stpushb	$0x48	# REX
-		stpushb	$0x80	# ADD r/m8, imm8
-		stpushb	$0x00	# \0, [RAX]
-		movq	(%rdx), %rax
-		stpushb	%al		# ib
-		jmp		heap_saver_loop
-
-	save_write:
-		pushq	%rdi
-			leaq	write_code_end - write_code(%r9), %rdi
-			call	stresize
-			leaq	write_code - write_code_end(%r8, %r9), %rdi
-			movq	$(write_code_end - write_code), %rcx
-			movq	$write_code, %rsi
-			rep movsb
-		popq	%rdi
-		jmp		heap_saver_loop
-
-	save_read:
-		pushq	%rdi
-			leaq	read_code_end - read_code(%r9), %rdi
-			call	stresize
-			leaq	read_code - read_code_end(%r8, %r9), %rdi
-			movq	$(read_code_end - read_code), %rcx
-			movq	$read_code, %rsi
-			rep movsb
-		popq	%rdi
-		jmp		heap_saver_loop
-
-heap_saver_end:
+save_adds_done:
 	movq	(%rsp), %rax
 	leaq	-0x10(%rbp), %rsp
+	pushq	$0
+	pushq	$0
 	jmp		*%rax

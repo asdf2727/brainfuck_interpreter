@@ -47,7 +47,7 @@ brainunfucker:
 
 	cmpb	$0, -0x1(%rdi)
 	jne		brainunfucker_end	# something went wrong, abort
-
+	
 	subq	$0x18, %rsp
 	stsave	%rsp
 	# create new mapping
@@ -59,13 +59,13 @@ brainunfucker:
 	movq	$-1, %r8
 	movq	$0, %r9
 	syscall
-	pushq	%rax
 	# copy code
 	movq	-0x10(%rbp), %rcx
 	movq	-0x18(%rbp), %rsi
 	movq	%rax, %rdi
 	rep movsb
 	# change permissions
+	pushq	%rax
 	movq	%rax, %rdi
 	movq	$10, %rax
 	movq	-0x10(%rbp), %rsi
@@ -78,7 +78,7 @@ brainunfucker:
 	movq	%rsp, %rdi
 	movq	$0, %rax
 	rep stosq
-	leaq	-0x21(%rbp), %rax
+	movq	%rsp, %rax
 	brainunfucker_call_code:
 	call	*%rdx
 	addq	$0x8000, %rsp
