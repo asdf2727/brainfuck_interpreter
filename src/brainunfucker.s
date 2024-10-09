@@ -52,6 +52,18 @@
 
 .text
 
+.include "lib/inc/utils.s"
+
+print_newline:
+	movq	$1, %rax
+	movq	$1, %rdi
+	movq	$1, %rdx
+	pushq	$10
+	movq	%rsp, %rsi
+	syscall
+	addq	$0x8, %rsp
+	ret
+
 .global brainunfucker
 brainunfucker:
 	pushq	%rbp
@@ -67,19 +79,14 @@ brainunfucker:
 	cmpb	$0, -0x1(%rdi)
 	jne		brainunfucker_end	# something went wrong, abort
 	
+	call	print_newline
+
 	# run the compiled code
 	call	runcode
 
 	call	stdel
 
-	# print an extra \n
-	pushq	$10			# \n
-	movq	%rsp, %rsi
-	movq	$1, %rax	# write
-	movq	$1, %rdi	# to stdout
-	movq	$1, %rdx	# 1 char
-	syscall
-	addq	$0x8, %rsp
+	call	print_newline
 
 	brainunfucker_end:
 	movq %rbp, %rsp

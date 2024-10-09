@@ -4,7 +4,6 @@
 
 .data
 
-wrong_char_str:	.asciz	"This (%c) character is not part of the brainfuck language. Maybe you put in the wrong file?\n"
 few_par_str:	.asciz	"Expected closing paranthesis (]) not found until EOF. Good luck counting parantheses!\n"
 many_par_str:	.asciz	"Unexpected closing paranthesis (]) found. Good luck counting parantheses!\n"
 
@@ -163,14 +162,42 @@ jump_table:
 
 # stops the program and shows an error
 parse_unknown:
-	pushq	(%rdi)
-	call	stdel
+	decq	%rdi
+	movq	$1, %rdx
+	parse_unknown_loop:
+		movb	(%rdi, %rdx), %cl
+		incq	%rdx
+		cmpb	$9, %cl
+		je		parse_unknown_loop
+		cmpb	$32, %cl
+		je		parse_unknown_loop
+		movb	ascii_table(%rcx), %cl
+		cmpb	$0, %cl
+		je		parse_unknown_loop
+	decq	%rdx
+	
+	pushq	%r11
+	pushq	%rsi
+	pushq	%rdi
+	addq	%rdx, (%rsp)
+		movq	$1, %rax
+		movq	%rdi, %rsi
+		movq	$2, %rdi
+		syscall
+		movq	$1, %rax
+		movq	$2, %rdi
+		movq	$1, %rdx
+		pushq	$10
+		movq	%rsp, %rsi
+		syscall
+		addq	$0x8, %rsp
+	popq	%rdi
 	popq	%rsi
-	movq	$wrong_char_str, %rdi
-	call	printf_safe
-	movq	%r11, %rsp
-	popq	%rbp
-	ret
+	popq	%r11
+
+	movq	$0, %rcx
+
+	jmp		parser_loop
 
 parser_loop:
 	movb	(%rdi), %cl
@@ -316,7 +343,7 @@ save_mult_add:
 			call	stinc
 			movw	$0xCE6B, -9(%r8, %r9)
 			movb	%cl, -7(%r8, %r9)
-			mov		$0x8B28, -6(%r8, %r9)
+			movw	$0x8B28, -6(%r8, %r9)
 			movl	%eax, -4(%r8, %r9)
 		save_mult_add_loop_end:
 		subq	$0x10, %rdx
