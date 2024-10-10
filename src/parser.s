@@ -146,7 +146,7 @@ ascii_table:
 .skip	162, 0
 
 jump_table:
-.quad	parse_unknown
+.quad	parser_loop
 .quad	parser_loop
 .quad	parse_plus
 .quad	parse_comma
