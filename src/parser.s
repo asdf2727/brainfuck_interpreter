@@ -19,13 +19,13 @@ no_open_par:
 	call	stdel
 	movq	$many_par_str, %rdi
 	call	printf_safe
-	movq	%r11, %rsp
+	movq	%r15, %rsp
 	popq	%rbp
 	ret
 
 .global base_parser
 base_parser:
-	movq	%rbp, %r11	# panic stack position revert
+	movq	%rbp, %r15	# panic stack position revert
 	pushq	%rbp
 	movq	%rsp, %rbp
 
@@ -46,8 +46,7 @@ base_parser:
 	# panic if not expected ] found
 	cmpb	$93, -0x1(%rdi)
 	je		no_open_par
-
-	call	save_add
+	
 	call	save_ret
 
 	movq	%rbp, %rsp
@@ -61,7 +60,7 @@ no_closed_par:
 	call	stdel
 	movq	$few_par_str, %rdi
 	call	printf_safe
-	movq	%r11, %rsp
+	movq	%r15, %rsp
 	popq	%rbp
 	ret
 
@@ -175,8 +174,7 @@ parse_unknown:
 		cmpb	$0, %cl
 		je		parse_unknown_loop
 	decq	%rdx
-	
-	pushq	%r11
+
 	pushq	%rsi
 	pushq	%rdi
 	addq	%rdx, (%rsp)
@@ -193,7 +191,6 @@ parse_unknown:
 		addq	$0x8, %rsp
 	popq	%rdi
 	popq	%rsi
-	popq	%r11
 
 	movq	$0, %rcx
 
@@ -252,221 +249,3 @@ parser_loop:
 
 	parser_loop_end:
 	jmp		*-0x18(%rbp)
-
-# --- SAVER ---
-
-save_add:
-	leaq	-0x28(%rbp), %rdx
-	save_add_loop:
-		cmpb	$0, -0x8(%rdx)
-		je		save_add_loop_end
-			movq	(%rdx), %rax
-			movb	-0x8(%rdx), %cl
-			#	addb	VAL, OFFSET(%rbx)
-			addq	$7, %r9
-			call	stinc
-			movw	$0x8380, -7(%r8, %r9)
-			movl	%eax, -5(%r8, %r9)
-			movb	%cl, -1(%r8, %r9)
-		save_add_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_add_loop
-	save_add_end:
-	movq	(%rsp), %rax
-	leaq	-0x20(%rbp), %rsp
-	pushq	$0
-	pushq	$0
-	jmp		*%rax
-
-save_move:
-	movq	-0x10(%rbp), %rax
-	cmpq	$0, %rax
-	je		save_move_end
-		movq	$0, -0x10(%rbp)
-		# 	addq	VAL, %rbx
-		addq	$7, %r9
-		call	stinc
-		movb	$0x48, -7(%r8, %r9)
-		movw	$0xC381, -6(%r8, %r9)
-		movl	%eax, -4(%r8, %r9)
-	save_move_end:
-	ret
-
-save_mult:
-	movq	$0, %rax
-	leaq	-0x28(%rbp), %rdx
-	save_mult_loop:
-		cmpb	$0, (%rdx)
-		jne		save_mult_loop_skip
-			addq	-0x8(%rdx), %rax
-		save_mult_loop_skip:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_mult_loop
-	save_mult_loop_end:
-	andq	$0xff, %rax
-	movw	mult_table(, %rax, 2), %cx
-	
-	save_mult_write:
-	#	movl	(%rbx), %esi
-	stpushw	$0x338B
-	cmpb	$0, %cl
-	je		save_mult_no_shift
-		#	shrl	%esi, shift
-		addq	$3, %r9
-		call	stinc
-		movw	$0xEEC1, -3(%r8, %r9)
-		movb	%cl, -1(%r8, %r9)
-	save_mult_no_shift:
-	shrq	$8, %rcx
-	cmpb	$1, %cl
-	je		save_mult_no_mult
-		#	imull	mult, %esi, %esi
-		addq	$3, %r9
-		call	stinc
-		movw	$0xF66B, -3(%r8, %r9)
-		movb	%cl, -1(%r8, %r9)
-	save_mult_no_mult:
-	ret
-
-save_mult_add:
-	leaq	-0x28(%rbp), %rdx
-	save_mult_add_loop:
-		cmpb	$0, -0x8(%rdx)
-		je		save_mult_add_loop_end
-			movq	(%rdx), %rax
-			movb	-0x8(%rdx), %cl
-			#	imull	VAL, %esi, %ecx
-			#	subb	%cl, OFFSET(%rbx)
-			addq	$9, %r9
-			call	stinc
-			movw	$0xCE6B, -9(%r8, %r9)
-			movb	%cl, -7(%r8, %r9)
-			movw	$0x8B28, -6(%r8, %r9)
-			movl	%eax, -4(%r8, %r9)
-		save_mult_add_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_mult_add_loop
-	save_mult_add_end:
-	movq	(%rsp), %rax
-	jmp		*%rax
-
-save_open:
-	#	cmpb	$0, (%rbx)
-	#	je		end_loop
-	addq	$9, %r9
-	call	stinc
-	movl	$0x0F003B80, -9(%r8, %r9)
-	movb	$0x84, -5(%r8, %r9)
-	ret
-
-save_close:
-	#	cmpb	$0, (%rbx)
-	#	je		end_loop
-	addq	$9, %r9
-	call	stinc
-	movl	$0x0F003B80, -9(%r8, %r9)
-	movb	$0x85, -5(%r8, %r9)
-	ret
-
-save_write:
-	movq	-0x10(%rbp), %rax
-	#	movq	$1, %al
-	#	leaq	OFFSET(%rbx), %rsi
-	#	syscall
-	addq	$13, %r9
-	call	stinc
-	movw	$0xC0C6, -13(%r8, %r9)
-	movb	$0x01, -11(%r8, %r9)
-	movl	$0x1D348D48, -10(%r8, %r9)
-	movl	%eax, -6(%r8, %r9)
-	movw	$0x050F, -2(%r8, %r9)
-	ret
-
-save_read:
-	movq	-0x10(%rbp), %rax
-	#	movq	$0, %rax
-	#	leaq	OFFSET(%rbx), %rsi
-	#	syscall
-	addq	$13, %r9
-	call	stinc
-	movw	$0xC0C6, -13(%r8, %r9)
-	movb	$0x00, -11(%r8, %r9)
-	movl	$0x1D348D48, -10(%r8, %r9)
-	movl	%eax, -6(%r8, %r9)
-	movw	$0x050F, -2(%r8, %r9)
-	ret
-
-save_ret:
-	stpushb	$0xC3	# near ret
-	ret
-
-.data
-
-mult_table:
-.quad   0xab00010001000100
-.quad   0xb7002b00cd000100
-.quad   0xa3004d0039000100
-.quad   0xef003700c5002b00
-.quad   0x1b003900f1000100
-.quad   0xa70023003d000d00
-.quad   0x1300450029000b00
-.quad   0xdf006f0035003700
-.quad   0x8b007100e1000100
-.quad   0x97001b00ad003900
-.quad   0x83003d0019000d00
-.quad   0xcf002700a5002300
-.quad   0xfb002900d1000b00
-.quad   0x870013001d000500
-.quad   0xf300350009001700
-.quad   0xbf005f0015002f00
-.quad   0x6b006100c1000100
-.quad   0x77000b008d003100
-.quad   0x63002d00f9001900
-.quad   0xaf00170085001b00
-.quad   0xdb001900b1000d00
-.quad   0x67000300fd003d00
-.quad   0xd3002500e9000300
-.quad   0x9f004f00f5002700
-.quad   0x4b005100a1000300
-.quad   0x57007b006d002900
-.quad   0x43001d00d9000500
-.quad   0x8f00070065001300
-.quad   0xbb00090091000700
-.quad   0x47007300dd003500
-.quad   0xb3001500c9000f00
-.quad   0x7f003f00d5001f00
-.quad   0x2b00410081000100
-.quad   0x37006b004d002100
-.quad   0x23000d00b9001100
-.quad   0x6f00770045000b00
-.quad   0x9b00790071000900
-.quad   0x27006300bd002d00
-.quad   0x93000500a9001b00
-.quad   0x5f002f00b5001700
-.quad   0xb00310061000500
-.quad   0x17005b002d001900
-.quad   0x3007d0099001d00
-.quad   0x4f00670025000300
-.quad   0x7b00690051000300
-.quad   0x70053009d002500
-.quad   0x7300750089000700
-.quad   0x3f001f0095000f00
-.quad   0xeb00210041000300
-.quad   0xf7004b000d001100
-.quad   0xe3006d0079000900
-.quad   0x2f00570005003b00
-.quad   0x5b00590031000500
-.quad   0xe70043007d001d00
-.quad   0x5300650069001300
-.quad   0x1f000f0075000700
-.quad   0xcb00110021000700
-.quad   0xd7003b00ed000900
-.quad   0xc3005d0059001500
-.quad   0xf004700e5003300
-.quad   0x3b00490011000f00
-.quad   0xc70033005d001500
-.quad   0x3300550049001f00
-.quad   0xff007f0055003f00

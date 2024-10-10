@@ -37,16 +37,16 @@
 # but now I'm at a point where I NEED to make it faster to restore what's left of my pride. It's not about liking it anymore, I'm just
 # addicted to optimisations. And now here we are:
 # TODO
-#	[ ] use addb with 0x0(%rax) before a jump if you can to avoid using a cmpb
-#	[ ] bring back multiplier to optimise loops
-#		eventually only optimise loops with +- 1 in checked pointer to reduce 
-#	[ ] benchmark memory usage and caching for both versions of sunca
-#	[ ] use registers for loops with low number of positions modified (maybe???)
+#	[ ] use addb with 0x0(%rbx) before a jump if you can to avoid using a cmpb
+#	[ ] also set 0x0(%rbx) to $0 when multiplying to avoid wasted instructions
+#	[x] bring back multiplier to optimise loops
+#		eventually only optimise loops with +- 1 in checked pointer to reduce
+#	[ ] remove imul operations whenever possible
 #	[x] prepare syscall registers IN ADVANCE to avoid wasting instructions on mov $1, %reg
-#	[ ] use offset for write/read instructions
+#	[x] use offset for write/read instructions
 #	[ ] use buffering for output to avoid using syscalls too many times
 #	[ ] 1 syscall for stdin if you can (don't count on it)
-#	[ ] WHY THE FUNCK IS THE OPTIMISATION SLOWER???
+#	[ ] use registers for variables where possible
 # Thank you for allowing me to share my struggles with this project, and it might also help you to learn a valuable lesson:
 # ALWAYS TEST AND BENCHMARK ANY OPTIMISATION TO MAKE SURE IT'S ACTUALLY FASTER! ONLY GOD AND THE INTEL GUYS KNOW HOW THE PROCESSOR WORKS!
 
@@ -67,6 +67,11 @@ print_newline:
 .global brainunfucker
 brainunfucker:
 	pushq	%rbp
+	pushq	%rbx
+	pushq	%r12
+	pushq	%r13
+	pushq	%r14
+	pushq	%r15
 	movq	%rsp, %rbp
 
 	pushq	%rdi
@@ -90,5 +95,10 @@ brainunfucker:
 
 	brainunfucker_end:
 	movq %rbp, %rsp
+	popq	%r15
+	popq	%r14
+	popq	%r13
+	popq	%r12
+	popq	%rbx
 	popq %rbp
 	ret
