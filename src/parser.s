@@ -36,10 +36,6 @@ base_parser:
 	pushq	$base_parser_loop_end	# ret address for parser_loop
 	pushq	$1						# optimise loop to mult (if 0)
 
-	# first add
-	pushq	$0
-	pushq	$0
-
 	jmp		parser_loop
 	base_parser_loop_end:
 
@@ -75,10 +71,6 @@ rec_parser:
 	pushq	$rec_parser_loop_end	# ret address for parser_loop
 	pushq	$0						# optimise loop to mult (if 0)
 
-	# first add
-	pushq	$0
-	pushq	$0
-
 	jmp		parser_loop
 	rec_parser_loop_end:
 
@@ -104,8 +96,7 @@ rec_parser_optimise:
 	ret
 
 rec_parser_no_optimise:
-	call	save_add
-	call	save_move
+	call	save_add_move
 	call	save_close
 	# set [ jump offset
 	movq	-0x8(%rbp), %rax
@@ -159,42 +150,33 @@ jump_table:
 
 .text
 
-# stops the program and shows an error
-parse_unknown:
-	decq	%rdi
-	movq	$1, %rdx
-	parse_unknown_loop:
-		movb	(%rdi, %rdx), %cl
-		incq	%rdx
-		cmpb	$9, %cl
-		je		parse_unknown_loop
-		cmpb	$32, %cl
-		je		parse_unknown_loop
-		movb	ascii_table(%rcx), %cl
-		cmpb	$0, %cl
-		je		parse_unknown_loop
-	decq	%rdx
+insert_add:
+	popq	%r11
+	leaq	-0x10(%rbp), %rax
+	movq	-0x10(%rbp), %rdx
+	insert_add_find_loop:
+		subq	$0x10, %rax
+		cmpq	%rsp, %rax
+		je		insert_add_new
+		cmpq	%rdx, -0x8(%rax)
+		jg		insert_add_find_loop
+	insert_add_found:
 
-	pushq	%rsi
-	pushq	%rdi
-	addq	%rdx, (%rsp)
-		movq	$1, %rax
-		movq	%rdi, %rsi
-		movq	$2, %rdi
-		syscall
-		movq	$1, %rax
-		movq	$2, %rdi
-		movq	$1, %rdx
-		pushq	$10
+	je		insert_add_reuse
+		movq	%rax, %rcx
+		subq	%rsp, %rcx
+		shrq	$3, %rcx
 		movq	%rsp, %rsi
-		syscall
-		addq	$0x8, %rsp
-	popq	%rdi
-	popq	%rsi
-
-	movq	$0, %rcx
-
-	jmp		parser_loop
+		subq	$0x10, %rsp
+		movq	%rsp, %rdi
+		rep		movsq
+		addq	$0x10, %rsp
+		insert_add_new:
+		subq	$0x10, %rsp
+		movq	%rdx, -0x8(%rax)
+		movq	$0, -0x10(%rax)
+	insert_add_reuse:
+	jmp		*%r11
 
 parser_loop:
 	movb	(%rdi), %cl
@@ -211,28 +193,17 @@ parser_loop:
 		jmp		parser_loop
 
 	parse_plus:
-		movq	-0x10(%rbp), %rax
-		cmpq	0x8(%rsp), %rax
-		je		parse_plus_reuse
-			pushq	%rax
-			pushq	$0
-		parse_plus_reuse:
-		incq	(%rsp)
+		call	insert_add
+		incq	-0x10(%rax)
 		jmp		parser_loop
 	parse_minus:
-		movq	-0x10(%rbp), %rax
-		cmpq	0x8(%rsp), %rax
-		je		parse_minus_reuse
-			pushq	%rax
-			pushq	$0
-		parse_minus_reuse:
-		decq	(%rsp)
+		call	insert_add
+		decq	-0x10(%rax)
 		jmp		parser_loop
 	
 	parse_open:
 		movq	$1, -0x20(%rbp)
-		call	save_add
-		call	save_move
+		call	save_add_move
 		call	rec_parser
 		jmp		parser_loop
 	
@@ -249,3 +220,37 @@ parser_loop:
 
 	parser_loop_end:
 	jmp		*-0x18(%rbp)
+
+	parse_unknown:
+		decq	%rdi
+		movq	$1, %rdx
+		parse_unknown_loop:
+			movb	(%rdi, %rdx), %cl
+			incq	%rdx
+			cmpb	$9, %cl
+			je		parse_unknown_loop
+			cmpb	$32, %cl
+			je		parse_unknown_loop
+			movb	ascii_table(%rcx), %cl
+			cmpb	$0, %cl
+			je		parse_unknown_loop
+		decq	%rdx
+
+		pushq	%rdi
+		addq	%rdx, (%rsp)
+			movq	$1, %rax
+			movq	%rdi, %rsi
+			movq	$2, %rdi
+			syscall
+			movq	$1, %rax
+			movq	$2, %rdi
+			movq	$1, %rdx
+			pushq	$10
+			movq	%rsp, %rsi
+			syscall
+			addq	$0x8, %rsp
+		popq	%rdi
+
+		movq	$0, %rcx
+
+		jmp		parser_loop

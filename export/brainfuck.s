@@ -375,38 +375,6 @@ jump_table:
 .quad	parse_open
 .quad	parser_loop_end
 .text
-parse_unknown:
-	decq	%rdi
-	movq	$1, %rdx
-	parse_unknown_loop:
-		movb	(%rdi, %rdx), %cl
-		incq	%rdx
-		cmpb	$9, %cl
-		je		parse_unknown_loop
-		cmpb	$32, %cl
-		je		parse_unknown_loop
-		movb	ascii_table(%rcx), %cl
-		cmpb	$0, %cl
-		je		parse_unknown_loop
-	decq	%rdx
-	pushq	%rsi
-	pushq	%rdi
-	addq	%rdx, (%rsp)
-		movq	$1, %rax
-		movq	%rdi, %rsi
-		movq	$2, %rdi
-		syscall
-		movq	$1, %rax
-		movq	$2, %rdi
-		movq	$1, %rdx
-		pushq	$10
-		movq	%rsp, %rsi
-		syscall
-		addq	$0x8, %rsp
-	popq	%rdi
-	popq	%rsi
-	movq	$0, %rcx
-	jmp		parser_loop
 parser_loop:
 	movb	(%rdi), %cl
 	movb	ascii_table(%rcx), %cl
@@ -455,6 +423,38 @@ parser_loop:
 		jmp		parser_loop
 	parser_loop_end:
 	jmp		*-0x18(%rbp)
+	parse_unknown:
+		decq	%rdi
+		movq	$1, %rdx
+		parse_unknown_loop:
+			movb	(%rdi, %rdx), %cl
+			incq	%rdx
+			cmpb	$9, %cl
+			je		parse_unknown_loop
+			cmpb	$32, %cl
+			je		parse_unknown_loop
+			movb	ascii_table(%rcx), %cl
+			cmpb	$0, %cl
+			je		parse_unknown_loop
+		decq	%rdx
+		pushq	%rsi
+		pushq	%rdi
+		addq	%rdx, (%rsp)
+			movq	$1, %rax
+			movq	%rdi, %rsi
+			movq	$2, %rdi
+			syscall
+			movq	$1, %rax
+			movq	$2, %rdi
+			movq	$1, %rdx
+			pushq	$10
+			movq	%rsp, %rsi
+			syscall
+			addq	$0x8, %rsp
+		popq	%rdi
+		popq	%rsi
+		movq	$0, %rcx
+		jmp		parser_loop
 .text
 save_add:
 	leaq	-0x28(%rbp), %rdx
@@ -494,8 +494,8 @@ mult_optimise:
 	negb	%cl
 	movq	$1, %rsi
 	mult_optimise_tests:
-		cmpb	$0, %cl
 		addq	$8, %rax
+		cmpb	$0, %cl
 		je		mult_optimise_done
 		addq	$8, %rax
 		cmpb	$1, %cl
@@ -770,6 +770,9 @@ brainfuck:
 	movq	%rsp, %rbp
 	pushq	%rdi
 	call	stinit
+	movq	$0x10000, %rdi
+	call	stresize
+	movq	$0, %r9
 	popq	%rdi
 	call	base_parser
 	cmpb	$0, -0x1(%rdi)

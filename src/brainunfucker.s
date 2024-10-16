@@ -15,6 +15,9 @@ brainunfucker:
 
 	pushq	%rdi
 	call	stinit
+	movq	$0x10000, %rdi
+	call	stresize
+	movq	$0, %r9
 	popq	%rdi
 
 	# parse the code
