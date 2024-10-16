@@ -21,9 +21,10 @@ brainunfucker:
 	popq	%rdi
 
 	# parse the code
+	movq	$0, %rbx
 	call	base_parser
 
-	cmpb	$0, -0x1(%rdi)
+	cmpq	$0, %rbx
 	jne		brainunfucker_end	# something went wrong, abort
 
 	# run the compiled code

@@ -19,14 +19,15 @@ no_open_par:
 	call	stdel
 	movq	$many_par_str, %rdi
 	call	printf_safe
+	movq	$1, %rbx
 	movq	%r15, %rsp
 	popq	%rbp
 	ret
 
 .global base_parser
 base_parser:
-	movq	%rbp, %r15	# panic stack position revert
 	pushq	%rbp
+	movq	%rsp, %r15	# panic stack position revert
 	movq	%rsp, %rbp
 
 	movq	$0, %rcx	# rcx should be 0 except for low byte
@@ -56,6 +57,7 @@ no_closed_par:
 	call	stdel
 	movq	$few_par_str, %rdi
 	call	printf_safe
+	movq	$2, %rbx
 	movq	%r15, %rsp
 	popq	%rbp
 	ret
