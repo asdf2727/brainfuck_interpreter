@@ -11,14 +11,15 @@
 
 .include "lib/inc/stk.s"
 
+# Save additions saved in stack into heap as machine code
 .global save_add
 save_add:
-	leaq	-0x28(%rbp), %rdx
+	leaq	-0x28(%rbp), %rdx				# Current addition pointer
 	save_add_loop:
-		cmpb	$0, -0x8(%rdx)
+		cmpb	$0, -0x8(%rdx)				# Skip additions with 0
 		je		save_add_loop_end
-			movq	(%rdx), %rax
-			movb	-0x8(%rdx), %cl
+			movq	(%rdx), %rax			# OFFSET into eax
+			movb	-0x8(%rdx), %cl			# VAL into cl
 			#	addb	VAL, OFFSET(%rbx)
 			addq	$7, %r9
 			call	stinc
@@ -26,22 +27,23 @@ save_add:
 			movl	%eax, -5(%r8, %r9)
 			movb	%cl, -1(%r8, %r9)
 		save_add_loop_end:
-		subq	$0x10, %rdx
+		subq	$0x10, %rdx					# next addition
 		cmpq	%rdx, %rsp
 		jl		save_add_loop
 	save_add_end:
-	movq	(%rsp), %rax
-	leaq	-0x20(%rbp), %rsp
+	movq	(%rsp), %rax					# save ret pointer into rax cuz we mess with previous stack frame
+	leaq	-0x20(%rbp), %rsp				# Clear stack so we don't write again the same additions
+	pushq	$0								# prepare stack for next additions
 	pushq	$0
-	pushq	$0
-	jmp		*%rax
+	jmp		*%rax							# return
 
+# Save a move of TP as machine code
 .global save_move
 save_move:
-	movq	-0x10(%rbp), %rax
-	cmpq	$0, %rax
+	cmpq	$0, -0x10(%rbp)					# don't move with 0
 	je		save_move_end
-		movq	$0, -0x10(%rbp)
+		movq	-0x10(%rbp), %rax			# VAL into rax
+		movq	$0, -0x10(%rbp)				# new offset is 0 cuz we synced the TP of our parse and our machine code
 		# 	addq	VAL, %rbx
 		addq	$7, %r9
 		call	stinc
@@ -51,30 +53,31 @@ save_move:
 	save_move_end:
 	ret
 
+# Checks for possible optimisations of imul
 # %cl - value to multiply
 # %rax - lookup table pointer
 # %rsi - if answer was negated
 mult_optimise:
 	negb	%cl
-	movq	$1, %rsi
+	movq	$1, %rsi					# start with negated number
 
 	mult_optimise_tests:
-		cmpb	$0, %cl
+		cmpb	$0, %cl					# multiply with 0, clear
 		addq	$8, %rax
 		je		mult_optimise_done
+		cmpb	$1, %cl					# multiply with 1, move
 		addq	$8, %rax
-		cmpb	$1, %cl
 		je		mult_optimise_done
 
 	subq	$16, %rax
 	cmpq	$0, %rsi
-	je		mult_optimise_done
+	je		mult_optimise_done			# if we checked both positive and negated numbers, stop
 	negb	%cl
 	movq	$0, %rsi
-	jmp		mult_optimise_tests
+	jmp		mult_optimise_tests			# ne-negate number to check for positives as well
 
 	mult_optimise_done:
-	jmp		*(%rax)
+	jmp		*(%rax)						# goto the proper method
 
 .data
 
@@ -85,12 +88,14 @@ save_mult_table:
 
 .text
 
+# Multiply with no optimisation
 save_mult_default:
 	#	imull	MULT, %ecx, %ecx
 	addq	$3, %r9
 	call	stinc
 	movw	$0xC96B, -3(%r8, %r9)
 	movb	%cl, -1(%r8, %r9)
+# Don't bother to multiply with 1
 save_mult_1:
 	shrq	$8, %rcx
 	cmpb	$0, %cl
@@ -103,6 +108,7 @@ save_mult_1:
 	save_mult_no_shift:
 	ret
 
+# Clear if you would multiply with 0 (tehnically this shoudn't happen but just in case)
 save_mult_0:
 	#	TODO	add error detection
 	#	xorl	%ecx, %ecx
@@ -111,8 +117,10 @@ save_mult_0:
 	movw	$0xC933, -2(%r8, %r9)
 	ret
 
+# Calculate number of repetitions of an optimised loop (henceforth N)
 .global save_mult
 save_mult:
+	# Get through all buffered additions to see how much we add to (TP) in one loop (henceforth K)
 	movq	$0, %rax
 	leaq	-0x28(%rbp), %rdx
 	save_mult_loop:
@@ -125,7 +133,7 @@ save_mult:
 		jl		save_mult_loop
 	save_mult_loop_end:
 	andq	$0xff, %rax
-	movw	mult_table(, %rax, 2), %cx
+	movw	mult_table(, %rax, 2), %cx		# use K in black magic lookup table to get it's inverse and another thing
 	
 	save_mult_write:
 	#	movl	(%rbx), %ecx
@@ -148,6 +156,7 @@ save_mult_add_table:
 
 .text
 
+# Multiply with no optimisation
 save_add_mult_default:
 	#	imull	VAL, %ecx, %edx
 	addq	$3, %r9
@@ -160,12 +169,14 @@ save_add_mult_default:
 	movw	$0x9300, -6(%r8, %r9)
 	jmp		save_add_mult_add_end
 
+# Add N directly into proper byte if you multiply with 1
 save_add_mult_1:
 	#	addb	%cl, OFFSET(%rbx)
 	addq	$6, %r9
 	call	stinc
 	movw	$0x8B00, -6(%r8, %r9)
 
+# Turn into sub instead of add if you add with a negated number
 save_add_mult_add_end:
 	movq	(%rdx), %rax
 	movl	%eax, -4(%r8, %r9)
@@ -174,18 +185,16 @@ save_add_mult_add_end:
 	addl	%esi, -6(%r8, %r9)	# turn into subb if necessary
 	ret
 
+# Don't do anything if you add with 0 (this should never happen but just in case)
 save_add_mult_0:
-	#	movb	$0, OFFSET(%rbx)
-	addq	$3, %r9
-	call	stinc
-	movl	$0x0083C6, -3(%r8, %r9)
 	ret
 
+# Save additions but multiplied with N for optimised loops
 .global save_mult_add
 save_mult_add:
-	leaq	-0x28(%rbp), %rdx
+	leaq	-0x28(%rbp), %rdx						# rdx is pointer to current additions
 	save_mult_add_loop:
-		cmpq	$0, (%rdx)
+		cmpq	$0, (%rdx)							# Skip if you add with 0
 		je		save_mult_add_loop_end
 
 			#	imull	VAL, %ecx, (%rbx)
@@ -194,18 +203,22 @@ save_mult_add:
 			call	mult_optimise
 
 		save_mult_add_loop_end:
-		subq	$0x10, %rdx
+		subq	$0x10, %rdx							# next addition
 		cmpq	%rdx, %rsp
 		jl		save_mult_add_loop
 	save_mult_add_end:
 
+	# Clear TP cuz that's what happens in a loop
 	#	movb	$0, (%rbx)
 	addq	$3, %r9
 	call	stinc
 	movl	$0x0003C6, -3(%r8, %r9)
 
-	movq	(%rsp), %rax
-	jmp		*%rax
+	movq	(%rsp), %rax					# save ret pointer into rax cuz we mess with previous stack frame
+	leaq	-0x20(%rbp), %rsp				# Clear stack so we don't write again the same additions
+	pushq	$0								# prepare stack for next additions
+	pushq	$0
+	jmp		*%rax							# return
 
 .global save_open
 save_open:
@@ -274,6 +287,10 @@ save_ret:
 
 .data
 
+# Black magic fuckery lookup table with modular arithmetic made automatically with a C++ program
+# lookup[i] = shift_value[i] << 8 | mod_inverse[i]
+# shift_value[i] = index of lsb that is set
+# mod_inverse[i] = modular inverse of i with MOD, where MOD = 256 / gcd(i, 256)
 mult_table:
 .quad	0x00ab010100010800
 .quad	0x00b7012b00cd0201
