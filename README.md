@@ -10,6 +10,8 @@ eventually only optimise loops with +- 1 in checked pointer to reduce
 - [ ] use buffering for output to avoid using syscalls too many times
 - [ ] 1 syscall for stdin if you can (don't count on it)
 - [ ] use registers for variables where possible
+- [ ] don't use a je before optimised loops if loops are short
+- [ ] use xmm for additions if enough adds are close together (preferably alligned)
 
 # RANT 1
 

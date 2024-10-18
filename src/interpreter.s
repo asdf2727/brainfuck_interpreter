@@ -10,7 +10,9 @@ runcode:
 
 	# save heap stack
 	subq	$0x18, %rsp
-	stsave	%rsp
+	movq	%r8, -0x8(%rbp)
+	movq	%r9, -0x10(%rbp)
+	movq	%r10, -0x18(%rbp)
 
 	# create new mapping
 	movq	$9, %rax
@@ -25,7 +27,7 @@ runcode:
 
 	# copy code
 	movq	-0x10(%rbp), %rcx
-	movq	-0x18(%rbp), %rsi
+	movq	-0x8(%rbp), %rsi
 	movq	%rax, %rdi
 	rep movsb
 
@@ -63,8 +65,9 @@ runcode:
 	syscall
 
 	# load heap stack
-	stload	%rsp
-	addq	$0x18, %rsp
+	movq	-0x8(%rbp), %r8
+	movq	-0x10(%rbp), %r9
+	movq	-0x18(%rbp), %r10
 
 	movq	%rbp, %rsp
 	popq	%rbx

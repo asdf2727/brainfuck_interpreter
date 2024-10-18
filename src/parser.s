@@ -19,26 +19,24 @@ no_open_par:
 	call	stdel
 	movq	$many_par_str, %rdi
 	call	printf_safe
-	movq	$1, %rbx
-	movq	%r15, %rsp
+	movq	$1, %r15
+	movq	%r11, %rsp
 	popq	%rbp
 	ret
 
 .global base_parser
 base_parser:
 	pushq	%rbp
-	movq	%rsp, %r15	# panic stack position revert
 	movq	%rsp, %rbp
+	movq	%rsp, %r11	# panic stack position revert
 
 	movq	$0, %rcx	# rcx should be 0 except for low byte
 
 	pushq	$0						# begin loop position
 	pushq	$0						# tape pointer offset
-	pushq	$base_parser_loop_end	# ret address for parser_loop
 	pushq	$1						# optimise loop to mult (if 0)
 
-	jmp		parser_loop
-	base_parser_loop_end:
+	call	parser_loop
 
 	# panic if not expected ] found
 	cmpb	$93, -0x1(%rdi)
@@ -57,8 +55,8 @@ no_closed_par:
 	call	stdel
 	movq	$few_par_str, %rdi
 	call	printf_safe
-	movq	$2, %rbx
-	movq	%r15, %rsp
+	movq	$2, %r15
+	movq	%r11, %rsp
 	popq	%rbp
 	ret
 
@@ -66,47 +64,58 @@ rec_parser:
 	pushq	%rbp
 	movq	%rsp, %rbp
 
-	call	save_open
-
-	pushq	%r9						# begin loop position
+	pushq	0x18(%r11)				# begin loop position
 	pushq	$0						# tape pointer offset
-	pushq	$rec_parser_loop_end	# ret address for parser_loop
 	pushq	$0						# optimise loop to mult (if 0)
 
-	jmp		parser_loop
-	rec_parser_loop_end:
+	call	parser_loop
 
 	# panic if expected ] not found
 	cmpb	$93, -0x1(%rdi)
 	jne		no_closed_par
 
-	movq	-0x10(%rbp), %rax
-	orq		-0x20(%rbp), %rax
-	cmpq	$0, %rax
+	cmpq	$0, -0x18(%rbp)
 	jne		rec_parser_no_optimise
+	cmpq	$0, -0x10(%rbp)
+	jne		rec_parser_save_open
 
 rec_parser_optimise:
+	# call	save_open
+
 	call	save_mult
 	call	save_mult_add
-	# set ] jump offset
-	movq	-0x8(%rbp), %rax
-	movl	%r9d, -0x4(%r8, %rax)
-	subl	%eax, -0x4(%r8, %rax)
+
+	# xchgq	%r8, 0x20(%r11)
+	# xchgq	%r9, 0x18(%r11)
+	# movq	-0x8(%rbp), %rdx
+	# addq	$6, %rdx
+	# movq	%r9, %rax
+	# subq	%rdx, %rax
+	# movl	%eax, -4(%r8, %rdx)		# set [ jump offset
+	# xchgq	%r8, 0x20(%r11)
+	# xchgq	%r9, 0x18(%r11)
 
 	movq	%rbp, %rsp
 	popq	%rbp
 	ret
 
+rec_parser_save_open:
+	call	save_open
 rec_parser_no_optimise:
 	call	save_add_move
 	call	save_close
-	# set [ jump offset
-	movq	-0x8(%rbp), %rax
-	movl	%r9d, -0x4(%r8, %rax)
-	subl	%eax, -0x4(%r8, %rax)
-	# set ] jump offset
-	movl	%eax, -0x4(%r8, %r9)
-	subl	%r9d, -0x4(%r8, %r9)
+
+	xchgq	%r8, 0x20(%r11)
+	xchgq	%r9, 0x18(%r11)
+	movq	-0x8(%rbp), %rdx
+	addq	$6, %rdx
+	movq	%r9, %rax
+	subq	%rdx, %rax
+	movl	%eax, -4(%r8, %rdx)		# set [ jump offset
+	negq	%rax
+	movl	%eax, -4(%r8, %r9)		# set ] jump offset
+	xchgq	%r8, 0x20(%r11)
+	xchgq	%r9, 0x18(%r11)
 
 	movq	%rbp, %rsp
 	popq	%rbp
@@ -153,32 +162,47 @@ jump_table:
 .text
 
 insert_add:
-	popq	%r11
-	leaq	-0x10(%rbp), %rax
+	movq	$-0x10, %rsi
 	movq	-0x10(%rbp), %rdx
 	insert_add_find_loop:
-		subq	$0x10, %rax
-		cmpq	%rsp, %rax
+		addq	$0x10, %rsi
+		cmpq	%r9, %rsi
 		je		insert_add_new
-		cmpq	%rdx, -0x8(%rax)
-		jg		insert_add_find_loop
+		cmpq	%rdx, (%r8, %rsi)
+		jl		insert_add_find_loop
 	insert_add_found:
 
+	cmpq	%rdx, (%r8, %rsi)
 	je		insert_add_reuse
-		movq	%rax, %rcx
-		subq	%rsp, %rcx
-		shrq	$3, %rcx
-		movq	%rsp, %rsi
-		subq	$0x10, %rsp
-		movq	%rsp, %rdi
-		rep		movsq
-		addq	$0x10, %rsp
-		insert_add_new:
-		subq	$0x10, %rsp
-		movq	%rdx, -0x8(%rax)
-		movq	$0, -0x10(%rax)
+		movq	%r9, %rcx
+		addq	$0x10, %r9
+		call	stinc
+		insert_add_new_loop:
+			movq	-0x10(%r8, %rcx), %rax
+			movq	%rax, (%r8, %rcx)
+			movq	-0x8(%r8, %rcx), %rax
+			movq	%rax, 0x8(%r8, %rcx)
+			subq	$0x10, %rcx
+			cmpq	%rsi, %rcx
+			jg		insert_add_new_loop
+		movq	$0, %rcx
+		movq	%rdx, (%r8, %rsi)
+		movq	$0, 0x8(%r8, %rsi)
 	insert_add_reuse:
-	jmp		*%r11
+	ret
+	
+	insert_add_new:
+	stpushq	%rdx
+	stpushq	$0
+	ret
+
+disable_opt:
+	cmpq	$0, -0x18(%rbp)
+	jne		disable_opt_skip
+		movq	$1, -0x18(%rbp)
+		call	save_open
+	disable_opt_skip:
+	ret
 
 parser_loop:
 	movb	(%rdi), %cl
@@ -196,32 +220,32 @@ parser_loop:
 
 	parse_plus:
 		call	insert_add
-		incq	-0x10(%rax)
+		incq	0x8(%r8, %rsi)
 		jmp		parser_loop
 	parse_minus:
 		call	insert_add
-		decq	-0x10(%rax)
+		decq	0x8(%r8, %rsi)
 		jmp		parser_loop
 	
 	parse_open:
-		movq	$1, -0x20(%rbp)
+		call	disable_opt
 		call	save_add_move
 		call	rec_parser
 		jmp		parser_loop
 	
 	parse_dot:
-		movq	$1, -0x20(%rbp)
+		call	disable_opt
 		call	save_add
 		call	save_write
 		jmp		parser_loop
 	parse_comma:
-		movq	$1, -0x20(%rbp)
+		call	disable_opt
 		call	save_add
 		call	save_read
 		jmp		parser_loop
 
 	parser_loop_end:
-	jmp		*-0x18(%rbp)
+	ret
 
 	parse_unknown:
 		decq	%rdi

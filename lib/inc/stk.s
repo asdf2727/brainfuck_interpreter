@@ -1,17 +1,3 @@
-# load stack parameters from DST
-.macro stsave DST
-	movq	%r8, (\DST)
-	movq	%r9, 0x8(\DST)
-	movq	%r10, 0x10(\DST)
-.endm
-
-# load stack parameters from SRC
-.macro stload SRC
-	movq	(\SRC), %r8
-	movq	0x8(\SRC), %r9
-	movq	0x10(\SRC), %r10
-.endm
-
 # push SRC (not memory) into the end of the stack
 .macro stpushq SRC
 	addq	$0x8, %r9

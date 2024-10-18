@@ -11,13 +11,21 @@
 
 .include "lib/inc/stk.s"
 
+.macro stswap
+	xchgq	%r8, 0x20(%r11)
+	xchgq	%r9, 0x18(%r11)
+	xchgq	%r10, 0x10(%r11)
+.endm
+
 write_add:
-	leaq	-0x30(%rbp), %rdx
-	cmpq	%rdx, %rsp
-	jge		write_add_end
+	movq	0x20(%r11), %rsi
+	movq	0x18(%r11), %rdx
+	cmpq	$0, %rdx
+	je		write_add_end
+	addq	%rsi, %rdx
 	write_add_loop:
-		movb	(%rdx), %cl
-		movq	0x8(%rdx), %rax
+		movq	(%rsi), %rax
+		movb	0x8(%rsi), %cl
 		#	addb	VAL, OFFSET(%rbx)
 		addq	$7, %r9
 		call	stinc
@@ -25,74 +33,71 @@ write_add:
 		movl	%eax, -5(%r8, %r9)
 		movb	%cl, -1(%r8, %r9)
 		write_add_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		write_add_loop
+		addq	$0x10, %rsi
+		cmpq	%rdx, %rsi
+		jne		write_add_loop
 	write_add_end:
-	popq	%rax
-	popq	%rdx
-	leaq	-0x20(%rbp), %rsp
-	pushq	%rdx
-	jmp		*%rax
+	movq	$0, 0x18(%r11)
+	ret
 
 .global save_add
 save_add:
-	leaq	-0x20(%rbp), %rdx
-	movq	%rdx, %rsi
+	movq	$0, %rdx
+	movq	$0, %rsi
 
-	cmpq	%rdx, %rsp
-	jge		save_add_write
+	cmpq	%rsi, %r9
+	je		save_add_write
 	save_add_loop:
-		cmpb	$0, -0x10(%rdx)
+		cmpb	$0, 0x8(%r8, %rsi)
 		je		save_add_loop_end
-			movq	-0x10(%rdx), %r11
-			movq	%r11, -0x10(%rsi)
-			movq	-0x8(%rdx), %r11
-			movq	%r11, -0x8(%rsi)
-			subq	$0x10, %rsi
+			movq	(%r8, %rsi), %rax
+			movq	%rax, (%r8, %rdx)
+			movq	0x8(%r8, %rsi), %rax
+			movq	%rax, 0x8(%r8, %rdx)
+			addq	$0x10, %rdx
 		save_add_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_add_loop
+		addq	$0x10, %rsi
+		cmpq	%rsi, %r9
+		jne		save_add_loop
 
 	save_add_write:
-	movq	%rsi, %rsp
+	movq	%rdx, %r9
+	stswap
 	call	write_add
+	stswap
 	ret
 
 .global save_add_move
 save_add_move:
 	pushq	$0
-	movq	-0x10(%rbp), %rax
-	leaq	-0x30(%rbp), %rdx
-	leaq	0x10(%rdx), %rsi
-
-	cmpq	%rdx, %rsp
-	jge		save_add_move_write
+	movq	-0x10(%rbp), %rcx
+	movq	$0, %rdx
+	movq	$0, %rsi
+	cmpq	%rsi, %r9
+	je		save_add_move_write
 	save_add_move_loop:
-		cmpb	$0, (%rdx)
+		cmpb	$0, 0x8(%r8, %rsi)
 		je		save_add_move_loop_end
-		cmpb	%al, 0x8(%rdx)
-		je		save_add_move_loop_found
-			movq	(%rdx), %r11
-			movq	%r11, -0x10(%rsi)
-			movq	0x8(%rdx), %r11
-			movq	%r11, -0x8(%rsi)
-			subq	$0x10, %rsi
-			jmp		save_add_move_loop_end
-		save_add_move_loop_found:
-			movq	(%rdx), %r11
-			addq	%r11, (%rsp)
+			cmpq	%rcx, (%r8, %rsi)
+			jne		save_add_move_other
+				movq	0x8(%r8, %rsi), %rax
+				movq	%rax, (%rsp)
+				jmp		save_add_move_loop_end
+			save_add_move_other:
+				movq	(%r8, %rsi), %rax
+				movq	%rax, (%r8, %rdx)
+				movq	0x8(%r8, %rsi), %rax
+				movq	%rax, 0x8(%r8, %rdx)
+				addq	$0x10, %rdx
 		save_add_move_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_add_move_loop
+		addq	$0x10, %rsi
+		cmpq	%rsi, %r9
+		jne		save_add_move_loop
 
 	save_add_move_write:
-	popq	%r11
-	popq	%rax
-	movq	%rsi, %rsp
-	pushq	%rax
+	movq	$0, %rcx
+	movq	%rdx, %r9
+	stswap
 	call	write_add
 
 	movq	-0x10(%rbp), %rax
@@ -102,24 +107,36 @@ save_add_move:
 		# 	addq	VAL, %rbx
 		addq	$7, %r9
 		call	stinc
-		movb	$0x48, -7(%r8, %r9)
-		movw	$0xC381, -6(%r8, %r9)
+		movl	$0x00C38148, -7(%r8, %r9)
 		movl	%eax, -4(%r8, %r9)
+	
 	save_add_move_last:
-	# Need this even if VAL is 0!
-	# 	addq	VAL, (%rbx)
-	addq	$3, %r9
-	call	stinc
-	movw	$0x0380, -3(%r8, %r9)
-	movb	%r11b, -1(%r8, %r9)
-	ret
+	popq	%rax
+	cmpq	$0, %rax
+	je		save_add_move_last_cmp
+	save_add_move_last_add:
+		# 	addq	VAL, (%rbx)
+		addq	$3, %r9
+		call	stinc
+		movw	$0x0380, -3(%r8, %r9)
+		movb	%al, -1(%r8, %r9) 
+		stswap
+		ret
+	save_add_move_last_cmp:
+		# 	cmpb	$0x00, (%rbx)
+		addq	$3, %r9
+		call	stinc
+		movw	$0x3B80, -3(%r8, %r9)
+		movb	$0x00, -1(%r8, %r9) 
+		stswap
+		ret
 
 # %cl - value to multiply
 # %rax - lookup table pointer
-# %rsi - if answer was negated
+# %rbx - if answer was negated
 mult_optimise:
 	negb	%cl
-	movq	$1, %rsi
+	movq	$1, %rbx
 
 	mult_optimise_tests:
 		addq	$8, %rax
@@ -130,10 +147,10 @@ mult_optimise:
 		je		mult_optimise_done
 
 	subq	$16, %rax
-	cmpq	$0, %rsi
+	cmpq	$0, %rbx
 	je		mult_optimise_done
 	negb	%cl
-	movq	$0, %rsi
+	movq	$0, %rbx
 	jmp		mult_optimise_tests
 
 	mult_optimise_done:
@@ -177,41 +194,44 @@ save_mult_0:
 .global save_mult
 save_mult:
 	movq	$0, %rax
-	leaq	-0x28(%rbp), %rdx
+	movq	$0, %rsi
+	cmpq	%rsi, %r9
+	je		save_mult_loop_end
 	save_mult_loop:
-		cmpb	$0, (%rdx)
+		cmpb	$0, (%r8, %rsi)
 		jne		save_mult_loop_skip
-			addq	-0x8(%rdx), %rax
+			addq	0x8(%r8, %rsi), %rax
 		save_mult_loop_skip:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_mult_loop
+		addq	$0x10, %rsi
+		cmpq	%rsi, %r9
+		jne		save_mult_loop
 	save_mult_loop_end:
 	andq	$0xff, %rax
 	movw	mult_table(, %rax, 2), %cx
 	
-	save_mult_write:
+	stswap
 	#	movl	(%rbx), %ecx
 	stpushw	$0x0B8B
-	movq	$1, %r11
+	movq	$1, %r12
 	
 	#	imull	MULT, %ecx, %ecx
 	movq	$save_mult_table, %rax
 	call	mult_optimise
-	xorq	%rsi, %r11
+	xorq	%rbx, %r12
 
+	stswap
 	ret
 
 .data
 
 save_mult_add_table:
-.quad	save_add_mult_default
-.quad	save_add_mult_0
-.quad	save_add_mult_1
+.quad	save_mult_add_default
+.quad	save_mult_add_0
+.quad	save_mult_add_1
 
 .text
 
-save_add_mult_default:
+save_mult_add_default:
 	#	imull	VAL, %ecx, %edx
 	addq	$3, %r9
 	call	stinc
@@ -221,77 +241,81 @@ save_add_mult_default:
 	addq	$6, %r9
 	call	stinc
 	movw	$0x9300, -6(%r8, %r9)
-	jmp		save_add_mult_add_end
+	jmp		save_mult_add_add_end
 
-save_add_mult_1:
+save_mult_add_1:
 	#	addb	%cl, OFFSET(%rbx)
 	addq	$6, %r9
 	call	stinc
 	movw	$0x8B00, -6(%r8, %r9)
 
-save_add_mult_add_end:
-	movq	(%rdx), %rax
+save_mult_add_add_end:
+	movq	(%rsi), %rax
 	movl	%eax, -4(%r8, %r9)
-	xorq	%r11, %rsi
-	imulq	$0x28, %rsi, %rsi
-	addl	%esi, -6(%r8, %r9)	# turn into subb if necessary
+	xorq	%r12, %rbx
+	imulq	$0x28, %rbx, %rbx
+	addl	%ebx, -6(%r8, %r9)	# turn into subb if necessary
 	ret
 
-save_add_mult_0:
-	#	movb	$0, OFFSET(%rbx)
-	addq	$3, %r9
-	call	stinc
-	movl	$0x0083C6, -3(%r8, %r9)
+save_mult_add_0:
 	ret
 
 .global save_mult_add
 save_mult_add:
-	leaq	-0x28(%rbp), %rdx
+	stswap
+	movq	0x20(%r11), %rsi
+	movq	0x18(%r11), %rdx
+	cmpq	$0, %rdx
+	je		write_add_end
+	addq	%rsi, %rdx
 	save_mult_add_loop:
-		cmpq	$0, (%rdx)
+		cmpq	$0, 0x8(%rsi)
+		je		save_mult_add_loop_end
+		cmpq	$0, (%rsi)
 		je		save_mult_add_loop_end
 
-			#	imull	VAL, %ecx, (%rbx)
-			movb	-0x8(%rdx), %cl
+			#	imull	VAL, %ecx, OFFSET(%rbx)
+			movb	0x8(%rsi), %cl
 			movq	$save_mult_add_table, %rax
 			call	mult_optimise
 
 		save_mult_add_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_mult_add_loop
+		addq	$0x10, %rsi
+		cmpq	%rdx, %rsi
+		jne		save_mult_add_loop
 	save_mult_add_end:
-
+	movq	$0, 0x18(%r11)
 	#	movb	$0, (%rbx)
 	addq	$3, %r9
 	call	stinc
-	movl	$0x0003C6, -3(%r8, %r9)
-
-	movq	(%rsp), %rax
-	jmp		*%rax
+	movw	$0x03C6, -3(%r8, %r9)
+	movb	$0x00, -1(%r8, %r9)
+	stswap
+	ret
 
 .global save_open
 save_open:
-	#	cmpb	$0, (%rbx)
+	stswap
 	#	je		somewhere
-	addq	$9, %r9
+	addq	$6, %r9
 	call	stinc
-	movl	$0x0F003B80, -9(%r8, %r9)
-	movb	$0x84, -5(%r8, %r9)
+	movl	$0x840F, -6(%r8, %r9)
+	stswap
 	ret
 
 .global save_close
 save_close:
-	#	cmpb	$0, (%rbx)
+	stswap
 	#	jne		somewhere
-	addq	$9, %r9
+	addq	$6, %r9
 	call	stinc
-	movl	$0x0F003B80, -9(%r8, %r9)
-	movb	$0x85, -5(%r8, %r9)
+	movl	$0x850F, -6(%r8, %r9)
+	stswap
 	ret
 
 .global save_write
 save_write:
+	stswap
 	movq	-0x10(%rbp), %rax
 	#	xorl	%eax, %eax
 	#	movb	$1, %al
@@ -308,10 +332,12 @@ save_write:
 	call	stinc
 	movl	%eax, -6(%r8, %r9)
 	movw	$0x050F, -2(%r8, %r9)
+	stswap
 	ret
 
 .global save_read
 save_read:
+	stswap
 	movq	-0x10(%rbp), %rax
 	#	xorl	%eax, %eax
 	#	xorl	%edi, %edi
@@ -328,11 +354,14 @@ save_read:
 	call	stinc
 	movl	%eax, -6(%r8, %r9)
 	movw	$0x050F, -2(%r8, %r9)
+	stswap
 	ret
 
 .global save_ret
 save_ret:
+	stswap
 	stpushb	$0xC3	# near ret
+	stswap
 	ret
 
 .data

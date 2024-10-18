@@ -1,4 +1,4 @@
-build = obj/main.o obj/read_file.o obj/parser.o obj/saver.o obj/interpreter.o obj/brainunfucker.o lib/obj/utils.o lib/obj/stk.o
+build = lib/obj/utils.o lib/obj/stk.o obj/main.o obj/read_file.o obj/parser.o obj/saver.o obj/interpreter.o obj/brainunfucker.o
 .PHONY: clean
 
 bin/brainfuck: $(build) | bin

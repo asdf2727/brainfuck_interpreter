@@ -6,3 +6,4 @@ perf.data.old
 obj/
 lib/obj/
 export/build
+scripts/test.b
