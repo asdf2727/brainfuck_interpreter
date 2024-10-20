@@ -4,7 +4,11 @@
 # - [x] use addb with 0x0(%rbx) before a jump if you can to avoid using a cmpb
 # - [x] also set 0x0(%rbx) to $0 when multiplying to avoid wasted instructions
 # - [x] bring back multiplier to optimise loops
-# eventually only optimise loops with +- 1 in checked pointer to reduce
+# 	- [x] clear when multiplier is 0
+# 	- [x] move when multiplier is 1
+# 	- [x] shift when multiplier is power of 2
+# 	- [x] do the same for negatives
+# 	- [x] don't actually write the multiplier calculation if you don't need it (stuff like `[-]`)
 # - [x] remove imul operations whenever possible
 # - [x] prepare syscall registers IN ADVANCE to avoid wasting instructions on mov $1, %reg
 # - [x] use offset for write/read instructions

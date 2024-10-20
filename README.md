@@ -16,6 +16,7 @@
 - [x] don't use a je before optimised loops if loops are short
 - [x] skip calculating multiplier if no values depend on it
 - [ ] use xmm for additions if enough adds are close together (preferably alligned)
+- [ ] try to see if move and add is faster than add with offset even if sorted
 
 # RANT 1
 
@@ -56,7 +57,7 @@ After that I did one small optimization and called it a day. I mean, I was prett
 
 Only, that one small optimization actually didn't help at all. Moreover, when I tested it with another script, the Hanoi one, it ended up being SIGNIFICANTLY slower. This made zero sense because I simply reduced the number of instructions in my compiled code. Instead of doing `addb $1, %rax; addb $1, (%rax); addb $1, %rax; addb $1, (%rax)`... I just did `addb $1, 0x1(%rax); addb $1, 0x2(%rax);` and added an `addb $whatever, %rax` at the end. It does exactly the same things, just with half of the instructions, but it's slower.
 
-I don't know for the life of me why this happens, and I more or less accepted it as just the lottery of how your specific program runs, but now I'm at a point where I NEED to make it faster to restore what's left of my pride. It's not about liking it anymore, I'm just addicted to optimizations. And now here we are:
+I don't know for the life of me why this happens, and I more or less accepted it as just the lottery of how your specific program runs, but now I'm at a point where I NEED to make it faster to restore what's left of my pride. It's not about liking it anymore, I'm just addicted to optimizations. And now here we are.
 
 Thank you for allowing me to share my struggles with this project, and it might also help you to learn a valuable lesson:
 

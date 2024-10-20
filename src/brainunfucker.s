@@ -3,6 +3,14 @@
 
 .include "lib/inc/utils.s"
 
+stdout_code:
+	movq	$1, %rax
+	movq	$1, %rdi
+	movq	%r8, %rsi
+	movq	%r9, %rdx
+	syscall
+	ret
+
 .global brainunfucker
 brainunfucker:
 	pushq	%rbx
@@ -34,7 +42,8 @@ brainunfucker:
 	movq	-0x8(%rbp), %r8
 	movq	-0x10(%rbp), %r9
 	movq	-0x18(%rbp), %r10
-	call	runcode
+	# call	runcode
+	call	stdout_code
 
 	call	stdel
 
