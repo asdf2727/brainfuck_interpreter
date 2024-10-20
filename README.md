@@ -1,6 +1,6 @@
 ## TODO
 
-- [ ] use addb with 0x0(%rbx) before a jump if you can to avoid using a cmpb
+- [x] use addb with 0x0(%rbx) before a jump if you can to avoid using a cmpb
 - [x] also set 0x0(%rbx) to $0 when multiplying to avoid wasted instructions
 - [x] bring back multiplier to optimise loops
 eventually only optimise loops with +- 1 in checked pointer to reduce
@@ -10,7 +10,8 @@ eventually only optimise loops with +- 1 in checked pointer to reduce
 - [ ] use buffering for output to avoid using syscalls too many times
 - [ ] 1 syscall for stdin if you can (don't count on it)
 - [ ] use registers for variables where possible
-- [ ] don't use a je before optimised loops if loops are short
+- [x] don't use a je before optimised loops if loops are short
+- [x] skip calculating multiplier if no values depend on it
 - [ ] use xmm for additions if enough adds are close together (preferably alligned)
 
 # RANT 1

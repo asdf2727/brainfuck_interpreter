@@ -64,7 +64,7 @@ rec_parser:
 	pushq	%rbp
 	movq	%rsp, %rbp
 
-	pushq	0x18(%r11)				# begin loop position
+	pushq	$0						# begin loop position
 	pushq	$0						# tape pointer offset
 	pushq	$0						# optimise loop to mult (if 0)
 
@@ -80,21 +80,22 @@ rec_parser:
 	jne		rec_parser_save_open
 
 rec_parser_optimise:
-	# call	save_open
-
-	call	save_mult
-	call	save_mult_add
-
-	# xchgq	%r8, 0x20(%r11)
-	# xchgq	%r9, 0x18(%r11)
-	# movq	-0x8(%rbp), %rdx
-	# addq	$6, %rdx
-	# movq	%r9, %rax
-	# subq	%rdx, %rax
-	# movl	%eax, -4(%r8, %rdx)		# set [ jump offset
-	# xchgq	%r8, 0x20(%r11)
-	# xchgq	%r9, 0x18(%r11)
-
+	cmpq	$0x30, %r9
+	jge		rec_parser_optimise_with_open
+		call	save_mult
+		jmp		rec_parser_optimise_end
+	rec_parser_optimise_with_open:
+		call	save_open
+		call	save_mult
+		xchgq	%r8, 0x20(%r11)
+		xchgq	%r9, 0x18(%r11)
+		movq	-0x8(%rbp), %rdx
+		movq	%r9, %rax
+		subq	%rdx, %rax
+		movl	%eax, -4(%r8, %rdx)		# set [ jump offset
+		xchgq	%r8, 0x20(%r11)
+		xchgq	%r9, 0x18(%r11)
+	rec_parser_optimise_end:
 	movq	%rbp, %rsp
 	popq	%rbp
 	ret
@@ -108,7 +109,6 @@ rec_parser_no_optimise:
 	xchgq	%r8, 0x20(%r11)
 	xchgq	%r9, 0x18(%r11)
 	movq	-0x8(%rbp), %rdx
-	addq	$6, %rdx
 	movq	%r9, %rax
 	subq	%rdx, %rax
 	movl	%eax, -4(%r8, %rdx)		# set [ jump offset

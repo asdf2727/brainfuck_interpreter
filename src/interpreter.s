@@ -39,8 +39,8 @@ runcode:
 	syscall
 
 	# alloc stack space for memory tape
-	subq	$0x8000, %rsp
-	movq	$0x1000, %rcx
+	subq	$0x80008, %rsp
+	movq	$0x10001, %rcx
 	movq	%rsp, %rdi
 	movq	$0, %rax
 	rep stosq
