@@ -8,8 +8,7 @@
 # - [x] remove imul operations whenever possible
 # - [x] prepare syscall registers IN ADVANCE to avoid wasting instructions on mov $1, %reg
 # - [x] use offset for write/read instructions
-# - [ ] use buffering for output to avoid using syscalls too many times
-# - [ ] 1 syscall for stdin if you can (don't count on it)
+# - [x] use buffering for output to avoid using syscalls too many times
 # - [ ] use registers for variables where possible
 # - [x] don't use a je before optimised loops if loops are short
 # - [x] skip calculating multiplier if no values depend on it
@@ -829,7 +828,7 @@ mult_table:
 .quad	0x003301550049031f
 .quad	0x00ff017f0055023f
 .data
-.equ	WRITE_BUFFER_SIZE, 0x1000
+.equ	WRITE_BUFFER_SIZE, 0x10000
 copy_funcs:
 read_char:
 	xorl	%eax, %eax
@@ -847,8 +846,6 @@ read_char:
 	xorl	%edx, %edx
 	ret
 write_char:
-	cmpb	$0x1b, (%rbx)
-	je		write_char_flush
 	cmpl	$WRITE_BUFFER_SIZE, %edx
 	jl		write_char_no_flush
 	write_char_flush:
@@ -903,9 +900,9 @@ runcode:
 	subq	$WRITE_BUFFER_SIZE, %rsp
 	movq	%rsp, %rsi
 	movq	$0, %rdx
-	leaq	0x1a(%r8), %r9
-	leaq	0x27(%r8), %r10
-	leaq	0x39(%r8), %r11
+	leaq	write_char - copy_funcs(%r8), %r9
+	leaq	write_char_flush - copy_funcs(%r8), %r10
+	leaq	copy_funcs_end - copy_funcs(%r8), %r11
 	pushq	%r8
 	call_code:
 	call	*%r11

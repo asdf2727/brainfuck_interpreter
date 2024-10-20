@@ -1,6 +1,6 @@
 .data
 
-.equ	WRITE_BUFFER_SIZE, 0x1000
+.equ	WRITE_BUFFER_SIZE, 0x10000
 
 copy_funcs:
 
@@ -23,8 +23,8 @@ read_char:
 	ret
 
 write_char:
-	cmpb	$0x1b, (%rbx)
-	je		write_char_flush
+	#cmpb	$0x1b, (%rbx)
+	#je		write_char_flush
 	cmpl	$WRITE_BUFFER_SIZE, %edx
 	jl		write_char_no_flush
 	write_char_flush:
@@ -99,9 +99,9 @@ runcode:
 	subq	$WRITE_BUFFER_SIZE, %rsp
 	movq	%rsp, %rsi
 	movq	$0, %rdx
-	leaq	0x1a(%r8), %r9
-	leaq	0x27(%r8), %r10
-	leaq	0x39(%r8), %r11
+	leaq	write_char - copy_funcs(%r8), %r9
+	leaq	write_char_flush - copy_funcs(%r8), %r10
+	leaq	copy_funcs_end - copy_funcs(%r8), %r11
 	pushq	%r8
 	call_code:
 	call	*%r11

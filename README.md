@@ -7,8 +7,7 @@ eventually only optimise loops with +- 1 in checked pointer to reduce
 - [x] remove imul operations whenever possible
 - [x] prepare syscall registers IN ADVANCE to avoid wasting instructions on mov $1, %reg
 - [x] use offset for write/read instructions
-- [ ] use buffering for output to avoid using syscalls too many times
-- [ ] 1 syscall for stdin if you can (don't count on it)
+- [x] use buffering for output to avoid using syscalls too many times
 - [ ] use registers for variables where possible
 - [x] don't use a je before optimised loops if loops are short
 - [x] skip calculating multiplier if no values depend on it

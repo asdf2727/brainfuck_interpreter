@@ -1,10 +1,8 @@
 set -e
 
-min_time=100000000
-
 make
 
-for test in $*
+for test in benchmark/*.b
 do
 	echo -e "\n\n"
 	echo $test
@@ -28,6 +26,6 @@ do
 		cat $test >> code_file
 		cat $test.in >> in_file
 	done
-	hyperfine "cat < in_file | ./bin/brainfuck code_file" "cat < in_file | ./bin/brainfuck_pancake_1 code_file"
+	hyperfine "cat < in_file | ./bin/brainfuck code_file" "cat < in_file | ./bin/brainfuck_pancake_2 code_file"
 	rm code_file in_file
 done
