@@ -235,12 +235,12 @@ parser_loop:
 	
 	parse_dot:
 		call	disable_opt
-		call	save_add
+		call	save_add_move
 		call	save_write
 		jmp		parser_loop
 	parse_comma:
 		call	disable_opt
-		call	save_add
+		call	save_add_move
 		call	save_read
 		jmp		parser_loop
 

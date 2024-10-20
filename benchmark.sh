@@ -28,6 +28,6 @@ do
 		cat $test >> code_file
 		cat $test.in >> in_file
 	done
-	hyperfine "cat < in_file | ./bin/brainfuck code_file" "cat < in_file | ./bin/brainfuck_pancake_0 code_file"
+	hyperfine "cat < in_file | ./bin/brainfuck code_file" "cat < in_file | ./bin/brainfuck_pancake_1 code_file"
 	rm code_file in_file
 done

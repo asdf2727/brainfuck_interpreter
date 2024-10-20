@@ -1,7 +1,7 @@
 # This is an automated export version of the project, not meant for editing or reading.
 # ## TODO
 
-# - [ ] use addb with 0x0(%rbx) before a jump if you can to avoid using a cmpb
+# - [x] use addb with 0x0(%rbx) before a jump if you can to avoid using a cmpb
 # - [x] also set 0x0(%rbx) to $0 when multiplying to avoid wasted instructions
 # - [x] bring back multiplier to optimise loops
 # eventually only optimise loops with +- 1 in checked pointer to reduce
@@ -11,6 +11,9 @@
 # - [ ] use buffering for output to avoid using syscalls too many times
 # - [ ] 1 syscall for stdin if you can (don't count on it)
 # - [ ] use registers for variables where possible
+# - [x] don't use a je before optimised loops if loops are short
+# - [x] skip calculating multiplier if no values depend on it
+# - [ ] use xmm for additions if enough adds are close together (preferably alligned)
 
 # # RANT 1
 
@@ -56,16 +59,6 @@
 # Thank you for allowing me to share my struggles with this project, and it might also help you to learn a valuable lesson:
 
 # **ALWAYS TEST AND BENCHMARK ANY OPTIMIZATION TO MAKE SURE IT'S ACTUALLY FASTER!** Only god and the guys at intel know how the processor works!
-.macro stsave DST
-	movq	%r8, (\DST)
-	movq	%r9, 0x8(\DST)
-	movq	%r10, 0x10(\DST)
-.endm
-.macro stload SRC
-	movq	(\SRC), %r8
-	movq	0x8(\SRC), %r9
-	movq	0x10(\SRC), %r10
-.endm
 .macro stpushq SRC
 	addq	$0x8, %r9
 	call	stinc
@@ -273,22 +266,19 @@ no_open_par:
 	call	stdel
 	movq	$many_par_str, %rdi
 	call	printf_safe
-	movq	%r15, %rsp
+	movq	$1, %r15
+	movq	%r11, %rsp
 	popq	%rbp
 	ret
 base_parser:
-	movq	%rbp, %r15	
 	pushq	%rbp
 	movq	%rsp, %rbp
+	movq	%rsp, %r11	
 	movq	$0, %rcx	
 	pushq	$0						
 	pushq	$0						
-	pushq	$base_parser_loop_end	
 	pushq	$1						
-	pushq	$0
-	pushq	$0
-	jmp		parser_loop
-	base_parser_loop_end:
+	call	parser_loop
 	cmpb	$93, -0x1(%rdi)
 	je		no_open_par
 	call	save_ret
@@ -299,45 +289,58 @@ no_closed_par:
 	call	stdel
 	movq	$few_par_str, %rdi
 	call	printf_safe
-	movq	%r15, %rsp
+	movq	$2, %r15
+	movq	%r11, %rsp
 	popq	%rbp
 	ret
 rec_parser:
 	pushq	%rbp
 	movq	%rsp, %rbp
-	call	save_open
-	pushq	%r9						
 	pushq	$0						
-	pushq	$rec_parser_loop_end	
 	pushq	$0						
-	pushq	$0
-	pushq	$0
-	jmp		parser_loop
-	rec_parser_loop_end:
+	pushq	$0						
+	call	parser_loop
 	cmpb	$93, -0x1(%rdi)
 	jne		no_closed_par
-	movq	-0x10(%rbp), %rax
-	orq		-0x20(%rbp), %rax
-	cmpq	$0, %rax
+	cmpq	$0, -0x18(%rbp)
 	jne		rec_parser_no_optimise
+	cmpq	$0, -0x10(%rbp)
+	jne		rec_parser_save_open
 rec_parser_optimise:
-	call	save_mult
-	call	save_mult_add
-	movq	-0x8(%rbp), %rax
-	movl	%r9d, -0x4(%r8, %rax)
-	subl	%eax, -0x4(%r8, %rax)
+	cmpq	$0x30, %r9
+	jge		rec_parser_optimise_with_open
+		call	save_mult
+		jmp		rec_parser_optimise_end
+	rec_parser_optimise_with_open:
+		call	save_open
+		call	save_mult
+		xchgq	%r8, 0x20(%r11)
+		xchgq	%r9, 0x18(%r11)
+		movq	-0x8(%rbp), %rdx
+		movq	%r9, %rax
+		subq	%rdx, %rax
+		movl	%eax, -4(%r8, %rdx)		
+		xchgq	%r8, 0x20(%r11)
+		xchgq	%r9, 0x18(%r11)
+	rec_parser_optimise_end:
 	movq	%rbp, %rsp
 	popq	%rbp
 	ret
+rec_parser_save_open:
+	call	save_open
 rec_parser_no_optimise:
-	call	save_add
-	call	save_move
+	call	save_add_move
 	call	save_close
-	movq	-0x8(%rbp), %rax
-	movl	%r9d, -0x4(%r8, %rax)
-	subl	%eax, -0x4(%r8, %rax)
-	movl	%eax, -0x4(%r8, %r9)
-	subl	%r9d, -0x4(%r8, %r9)
+	xchgq	%r8, 0x20(%r11)
+	xchgq	%r9, 0x18(%r11)
+	movq	-0x8(%rbp), %rdx
+	movq	%r9, %rax
+	subq	%rdx, %rax
+	movl	%eax, -4(%r8, %rdx)		
+	negq	%rax
+	movl	%eax, -4(%r8, %r9)		
+	xchgq	%r8, 0x20(%r11)
+	xchgq	%r9, 0x18(%r11)
 	movq	%rbp, %rsp
 	popq	%rbp
 	ret
@@ -375,6 +378,45 @@ jump_table:
 .quad	parse_open
 .quad	parser_loop_end
 .text
+insert_add:
+	movq	$-0x10, %rsi
+	movq	-0x10(%rbp), %rdx
+	insert_add_find_loop:
+		addq	$0x10, %rsi
+		cmpq	%r9, %rsi
+		je		insert_add_new
+		cmpq	%rdx, (%r8, %rsi)
+		jl		insert_add_find_loop
+	insert_add_found:
+	cmpq	%rdx, (%r8, %rsi)
+	je		insert_add_reuse
+		movq	%r9, %rcx
+		addq	$0x10, %r9
+		call	stinc
+		insert_add_new_loop:
+			movq	-0x10(%r8, %rcx), %rax
+			movq	%rax, (%r8, %rcx)
+			movq	-0x8(%r8, %rcx), %rax
+			movq	%rax, 0x8(%r8, %rcx)
+			subq	$0x10, %rcx
+			cmpq	%rsi, %rcx
+			jg		insert_add_new_loop
+		movq	$0, %rcx
+		movq	%rdx, (%r8, %rsi)
+		movq	$0, 0x8(%r8, %rsi)
+	insert_add_reuse:
+	ret
+	insert_add_new:
+	stpushq	%rdx
+	stpushq	$0
+	ret
+disable_opt:
+	cmpq	$0, -0x18(%rbp)
+	jne		disable_opt_skip
+		movq	$1, -0x18(%rbp)
+		call	save_open
+	disable_opt_skip:
+	ret
 parser_loop:
 	movb	(%rdi), %cl
 	movb	ascii_table(%rcx), %cl
@@ -388,41 +430,30 @@ parser_loop:
 		incq	-0x10(%rbp)
 		jmp		parser_loop
 	parse_plus:
-		movq	-0x10(%rbp), %rax
-		cmpq	0x8(%rsp), %rax
-		je		parse_plus_reuse
-			pushq	%rax
-			pushq	$0
-		parse_plus_reuse:
-		incq	(%rsp)
+		call	insert_add
+		incq	0x8(%r8, %rsi)
 		jmp		parser_loop
 	parse_minus:
-		movq	-0x10(%rbp), %rax
-		cmpq	0x8(%rsp), %rax
-		je		parse_minus_reuse
-			pushq	%rax
-			pushq	$0
-		parse_minus_reuse:
-		decq	(%rsp)
+		call	insert_add
+		decq	0x8(%r8, %rsi)
 		jmp		parser_loop
 	parse_open:
-		movq	$1, -0x20(%rbp)
-		call	save_add
-		call	save_move
+		call	disable_opt
+		call	save_add_move
 		call	rec_parser
 		jmp		parser_loop
 	parse_dot:
-		movq	$1, -0x20(%rbp)
-		call	save_add
+		call	disable_opt
+		call	save_add_move
 		call	save_write
 		jmp		parser_loop
 	parse_comma:
-		movq	$1, -0x20(%rbp)
-		call	save_add
+		call	disable_opt
+		call	save_add_move
 		call	save_read
 		jmp		parser_loop
 	parser_loop_end:
-	jmp		*-0x18(%rbp)
+	ret
 	parse_unknown:
 		decq	%rdi
 		movq	$1, %rdx
@@ -437,7 +468,6 @@ parser_loop:
 			cmpb	$0, %cl
 			je		parse_unknown_loop
 		decq	%rdx
-		pushq	%rsi
 		pushq	%rdi
 		addq	%rdx, (%rsp)
 			movq	$1, %rax
@@ -452,47 +482,107 @@ parser_loop:
 			syscall
 			addq	$0x8, %rsp
 		popq	%rdi
-		popq	%rsi
 		movq	$0, %rcx
 		jmp		parser_loop
+.data
+TP_add:	.quad	0
 .text
+.macro stswap
+	xchgq	%r8, 0x20(%r11)
+	xchgq	%r9, 0x18(%r11)
+	xchgq	%r10, 0x10(%r11)
+.endm
+sanitise_add:
+	movq	$0, TP_add
+	movq	-0x10(%rbp), %rbx
+	movq	$0, %rdx
+	movq	$0, %rsi
+	cmpq	%rsi, %r9
+	je		sanitise_add_end
+	sanitise_add_loop:
+		cmpb	$0, 0x8(%r8, %rsi)
+		je		sanitise_add_loop_end
+			cmpq	%rbx, (%r8, %rsi)
+			jne		sanitise_add_other
+				movq	0x8(%r8, %rsi), %rax
+				movq	%rax, TP_add
+				jmp		sanitise_add_loop_end
+			sanitise_add_other:
+				movq	(%r8, %rsi), %rax
+				movq	%rax, (%r8, %rdx)
+				movq	0x8(%r8, %rsi), %rax
+				movq	%rax, 0x8(%r8, %rdx)
+				addq	$0x10, %rdx
+		sanitise_add_loop_end:
+		addq	$0x10, %rsi
+		cmpq	%rsi, %r9
+		jne		sanitise_add_loop
+	sanitise_add_end:
+	movq	%rdx, %r9
+	ret
+write_add:
+	movq	0x20(%r11), %rsi
+	movq	0x18(%r11), %rdx
+	cmpq	$0, %rdx
+	je		write_add_end
+	addq	%rsi, %rdx
+	write_add_loop:
+		movq	(%rsi), %rax
+		movb	0x8(%rsi), %cl
+		addq	$7, %r9
+		call	stinc
+		movw	$0x8380, -7(%r8, %r9)
+		movl	%eax, -5(%r8, %r9)
+		movb	%cl, -1(%r8, %r9)
+		write_add_loop_end:
+		addq	$0x10, %rsi
+		cmpq	%rdx, %rsi
+		jne		write_add_loop
+	write_add_end:
+	movq	$0, 0x18(%r11)
+	ret
 save_add:
-	leaq	-0x28(%rbp), %rdx
-	save_add_loop:
-		cmpb	$0, -0x8(%rdx)
-		je		save_add_loop_end
-			movq	(%rdx), %rax
-			movb	-0x8(%rdx), %cl
-			addq	$7, %r9
-			call	stinc
-			movw	$0x8380, -7(%r8, %r9)
-			movl	%eax, -5(%r8, %r9)
-			movb	%cl, -1(%r8, %r9)
-		save_add_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_add_loop
-	save_add_end:
-	movq	(%rsp), %rax
-	leaq	-0x20(%rbp), %rsp
-	pushq	$0
-	pushq	$0
-	jmp		*%rax
-save_move:
+	call	sanitise_add
+	stswap
+	call	write_add
+	movb	TP_add, %cl
+	cmpb	$0, %cl
+	je		save_add_skip_last
+		movq	-0x10(%rbp), %rax
+		addq	$7, %r9
+		call	stinc
+		movw	$0x8380, -7(%r8, %r9)
+		movl	%eax, -5(%r8, %r9)
+		movb	%cl, -1(%r8, %r9)
+	save_add_skip_last:
+	stswap
+	ret
+save_add_move:
+	call	sanitise_add
+	stswap
+	call	write_add
 	movq	-0x10(%rbp), %rax
 	cmpq	$0, %rax
-	je		save_move_end
+	je		save_add_move_skip_move
 		movq	$0, -0x10(%rbp)
 		addq	$7, %r9
 		call	stinc
-		movb	$0x48, -7(%r8, %r9)
-		movw	$0xC381, -6(%r8, %r9)
+		movl	$0x00C38148, -7(%r8, %r9)
 		movl	%eax, -4(%r8, %r9)
-	save_move_end:
+	save_add_move_skip_move:
+	movb	TP_add, %cl
+	cmpb	$0, %cl
+	je		save_add_move_skip_last
+		addq	$3, %r9
+		call	stinc
+		movw	$0x0380, -3(%r8, %r9)
+		movb	%cl, -1(%r8, %r9)
+	save_add_move_skip_last:
+	stswap
 	ret
 mult_optimise:
 	negb	%cl
-	movq	$1, %rsi
+	pushq	$1
 	mult_optimise_tests:
 		addq	$8, %rax
 		cmpb	$0, %cl
@@ -500,148 +590,177 @@ mult_optimise:
 		addq	$8, %rax
 		cmpb	$1, %cl
 		je		mult_optimise_done
-	subq	$16, %rax
-	cmpq	$0, %rsi
+		addq	$8, %rax
+		leaq	-1(%rcx), %rbx
+		andb	%cl, %bl
+		cmpb	$0, %bl
+		je		mult_optimise_done
+	subq	$24, %rax
+	cmpq	$0, (%rsp)
 	je		mult_optimise_done
 	negb	%cl
-	movq	$0, %rsi
+	movq	$0, (%rsp)
 	jmp		mult_optimise_tests
 	mult_optimise_done:
+	popq	%rbx
 	jmp		*(%rax)
+.data
+write_mult_table:
+.quad	write_mult_default
+.quad	write_mult_0
+.quad	write_mult_1
+.quad	write_mult_pow2
+.text
+write_mult:
+	movb	TP_add, %cl
+	movw	mult_table(, %rcx, 2), %cx
+	movq	$1, %r12
+	movq	$write_mult_table, %rax
+	jmp		mult_optimise
+	write_mult_default:
+	addq	$3, %r9
+	call	stinc
+	movw	$0x0B6B, -3(%r8, %r9)
+	movb	%cl, -1(%r8, %r9)
+	jmp		write_mult_shift
+	write_mult_pow2:
+	bsfq	%rcx, %rdx
+	subb	%dl, %ch
+	write_mult_1:
+	stpushw	$0x0B8B
+	write_mult_shift:
+	shrq	$8, %rcx
+	cmpb	$0, %cl
+	je		write_mult_no_shift
+		addq	$3, %r9
+		call	stinc
+		movw	$0xF9C0, -3(%r8, %r9)
+		movb	%cl, -1(%r8, %r9)
+	write_mult_no_shift:
+	jmp		write_mult_end
+	write_mult_0:
+	addq	$2, %r9
+	call	stinc
+	movw	$0xC933, -2(%r8, %r9)
+	write_mult_end:
+	xorq	%rbx, %r12
+	ret
 .data
 save_mult_table:
 .quad	save_mult_default
 .quad	save_mult_0
 .quad	save_mult_1
+.quad	save_mult_pow2
 .text
-save_mult_default:
+save_mult:
+	call	sanitise_add
+	pushq	$0
+	stswap
+	movq	0x20(%r11), %rsi
+	movq	0x18(%r11), %rdx
+	cmpq	$0, %rdx
+	je		save_mult_end
+	addq	%rsi, %rdx
+	save_mult_loop:
+		cmpq	$0, (%rsi)
+		je		save_mult_loop_end
+			cmpq	$0, (%rsp)
+			jne		save_mult_skip_calc
+				call	write_mult
+				movq	$1, (%rsp)
+			save_mult_skip_calc:
+			movb	0x8(%rsi), %cl
+			movq	$save_mult_table, %rax
+			jmp		mult_optimise
+			save_mult_default:
+			addq	$3, %r9
+			call	stinc
+			movw	$0xC16B, -3(%r8, %r9)
+			movb	%cl, -1(%r8, %r9)
+			jmp		save_mult_write_add
+			save_mult_pow2:
+			bsfq	%rcx, %rax
+			addq	$5, %r9
+			call	stinc
+			movl	$0xE0C0C888, -5(%r8, %r9)
+			movb	%al, -1(%r8, %r9)
+			save_mult_write_add:
+			addq	$6, %r9
+			call	stinc
+			movw	$0x8300, -6(%r8, %r9)
+			jmp		save_mult_write_end
+			save_mult_1:
+			addq	$6, %r9
+			call	stinc
+			movw	$0x8B00, -6(%r8, %r9)
+			save_mult_write_end:
+			movq	(%rsi), %rax
+			movl	%eax, -4(%r8, %r9)
+			xorq	%r12, %rbx
+			imulq	$0x28, %rbx, %rbx
+			addl	%ebx, -6(%r8, %r9)	
+			save_mult_0:
+		save_mult_loop_end:
+		addq	$0x10, %rsi
+		cmpq	%rdx, %rsi
+		jne		save_mult_loop
+	save_mult_end:
+	movq	$0, 0x18(%r11)
 	addq	$3, %r9
 	call	stinc
-	movw	$0xC96B, -3(%r8, %r9)
-	movb	%cl, -1(%r8, %r9)
-save_mult_1:
-	shrq	$8, %rcx
-	cmpb	$0, %cl
-	je		save_mult_no_shift
+	movw	$0x03C6, -3(%r8, %r9)
+	movb	$0x00, -1(%r8, %r9)
+	stswap
+	addq	$0x8, %rsp
+	ret
+save_cmp:
+	cmpb	$0, TP_add
+	jne		save_cmp_skip
 		addq	$3, %r9
 		call	stinc
-		movw	$0xF9C0, -3(%r8, %r9)
-		movb	%cl, -1(%r8, %r9)
-	save_mult_no_shift:
+		movw	$0x3B80, -3(%r8, %r9)
+		movb	$0x00, -1(%r8, %r9) 
+	save_cmp_skip:
 	ret
-save_mult_0:
-	addq	$2, %r9
-	call	stinc
-	movw	$0xC933, -2(%r8, %r9)
-	ret
-save_mult:
-	movq	$0, %rax
-	leaq	-0x28(%rbp), %rdx
-	save_mult_loop:
-		cmpb	$0, (%rdx)
-		jne		save_mult_loop_skip
-			addq	-0x8(%rdx), %rax
-		save_mult_loop_skip:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_mult_loop
-	save_mult_loop_end:
-	andq	$0xff, %rax
-	movw	mult_table(, %rax, 2), %cx
-	save_mult_write:
-	stpushw	$0x0B8B
-	movq	$1, %r11
-	movq	$save_mult_table, %rax
-	call	mult_optimise
-	xorq	%rsi, %r11
-	ret
-.data
-save_mult_add_table:
-.quad	save_add_mult_default
-.quad	save_add_mult_0
-.quad	save_add_mult_1
-.text
-save_add_mult_default:
-	addq	$3, %r9
-	call	stinc
-	movw	$0xD16B, -3(%r8, %r9)
-	movb	%cl, -1(%r8, %r9)
-	addq	$6, %r9
-	call	stinc
-	movw	$0x9300, -6(%r8, %r9)
-	jmp		save_add_mult_add_end
-save_add_mult_1:
-	addq	$6, %r9
-	call	stinc
-	movw	$0x8B00, -6(%r8, %r9)
-save_add_mult_add_end:
-	movq	(%rdx), %rax
-	movl	%eax, -4(%r8, %r9)
-	xorq	%r11, %rsi
-	imulq	$0x28, %rsi, %rsi
-	addl	%esi, -6(%r8, %r9)	
-	ret
-save_add_mult_0:
-	addq	$3, %r9
-	call	stinc
-	movl	$0x0083C6, -3(%r8, %r9)
-	ret
-save_mult_add:
-	leaq	-0x28(%rbp), %rdx
-	save_mult_add_loop:
-		cmpq	$0, (%rdx)
-		je		save_mult_add_loop_end
-			movb	-0x8(%rdx), %cl
-			movq	$save_mult_add_table, %rax
-			call	mult_optimise
-		save_mult_add_loop_end:
-		subq	$0x10, %rdx
-		cmpq	%rdx, %rsp
-		jl		save_mult_add_loop
-	save_mult_add_end:
-	addq	$3, %r9
-	call	stinc
-	movl	$0x0003C6, -3(%r8, %r9)
-	movq	(%rsp), %rax
-	jmp		*%rax
 save_open:
-	addq	$9, %r9
+	stswap
+	call	save_cmp
+	addq	$6, %r9
 	call	stinc
-	movl	$0x0F003B80, -9(%r8, %r9)
-	movb	$0x84, -5(%r8, %r9)
+	movl	$0x840F, -6(%r8, %r9)
+	movq	%r9, -0x8(%rbp)
+	stswap
 	ret
 save_close:
-	addq	$9, %r9
+	stswap
+	call	save_cmp
+	addq	$6, %r9
 	call	stinc
-	movl	$0x0F003B80, -9(%r8, %r9)
-	movb	$0x85, -5(%r8, %r9)
+	movl	$0x850F, -6(%r8, %r9)
+	stswap
 	ret
 save_write:
-	movq	-0x10(%rbp), %rax
-	addq	$12, %r9
+	stswap
+	addq	$3, %r9
 	call	stinc
-	movl	$0xC0C6C031, -12(%r8, %r9)
-	movl	$0x89C28901, -8(%r8, %r9)
-	movl	$0xB38D48C7, -4(%r8, %r9)
-	addq	$6, %r9
-	call	stinc
-	movl	%eax, -6(%r8, %r9)
-	movw	$0x050F, -2(%r8, %r9)
+	movw	$0xFF41, -3(%r8, %r9)
+	movb	$0xD1, -1(%r8, %r9)
+	stswap
 	ret
 save_read:
-	movq	-0x10(%rbp), %rax
-	addq	$12, %r9
+	stswap
+	addq	$3, %r9
 	call	stinc
-	movl	$0xFF31C031, -12(%r8, %r9)
-	movl	$0xC2C6D231, -8(%r8, %r9)
-	movl	$0xB38D4801, -4(%r8, %r9)
-	addq	$6, %r9
-	call	stinc
-	movl	%eax, -6(%r8, %r9)
-	movw	$0x050F, -2(%r8, %r9)
+	movw	$0xFF41, -3(%r8, %r9)
+	movb	$0xD0, -1(%r8, %r9)
+	stswap
 	ret
 save_ret:
-	stpushb	$0xC3	
+	stswap
+	addq	$4, %r9
+	call	stinc
+	movl	$0xC3D2FF41, -4(%r8, %r9)
+	stswap
 	ret
 .data
 mult_table:
@@ -709,51 +828,96 @@ mult_table:
 .quad	0x00c70133005d0215
 .quad	0x003301550049031f
 .quad	0x00ff017f0055023f
+.data
+.equ	WRITE_BUFFER_SIZE, 0x1000
+copy_funcs:
+read_char:
+	xorl	%eax, %eax
+	movb	$1, %al
+	movl	%eax, %edi
+	syscall
+	pushq	%rsi
+		xorl	%eax, %eax
+		xorl	%edi, %edi
+		xorl	%edx, %edx
+		movb	$1, %dl
+		leaq	(%rbx), %rsi
+		syscall
+	popq	%rsi
+	xorl	%edx, %edx
+	ret
+write_char:
+	cmpb	$0x1b, (%rbx)
+	je		write_char_flush
+	cmpl	$WRITE_BUFFER_SIZE, %edx
+	jl		write_char_no_flush
+	write_char_flush:
+		xorl	%eax, %eax
+		movb	$1, %al
+		movl	%eax, %edi
+		syscall
+		xorl	%edx, %edx
+	write_char_no_flush:
+	movb	(%rbx), %al
+	movb	%al, (%rsi, %rdx)
+	incl	%edx
+	ret
+copy_funcs_end:
 .text
 runcode:
 	pushq	%rbp
 	pushq	%rbx
 	movq	%rsp, %rbp
 	subq	$0x18, %rsp
-	stsave	%rsp
+	movq	%r8, -0x8(%rbp)
+	movq	%r9, -0x10(%rbp)
+	movq	%r10, -0x18(%rbp)
 	movq	$9, %rax
 	movq	$0, %rdi
 	movq	-0x10(%rbp), %rsi
+	addq	$(copy_funcs_end - copy_funcs), %rsi
 	movq	$3, %rdx
 	movq	$33, %r10
 	movq	$-1, %r8
 	movq	$0, %r9
 	syscall
 	movq	%rax, %r8
-	movq	-0x10(%rbp), %rcx
-	movq	-0x18(%rbp), %rsi
+	movq	$(copy_funcs_end - copy_funcs), %rcx
+	movq	$copy_funcs, %rsi
 	movq	%rax, %rdi
+	rep movsb
+	movq	-0x10(%rbp), %rcx
+	movq	-0x8(%rbp), %rsi
 	rep movsb
 	movq	%rax, %rdi
 	movq	$10, %rax
 	movq	-0x10(%rbp), %rsi
 	movq	$5, %rdx
 	syscall
-	subq	$0x8000, %rsp
-	movq	$0x1000, %rcx
+	subq	$0x80000, %rsp
+	movq	$0x10000, %rcx
 	movq	%rsp, %rdi
 	movq	$0, %rax
 	rep stosq
-	movq	$1, %rdi
-	movq	$1, %rdx
-	movq	$0, %rax
 	movq	%rsp, %rbx
+	subq	$WRITE_BUFFER_SIZE, %rsp
+	movq	%rsp, %rsi
+	movq	$0, %rdx
+	leaq	0x1a(%r8), %r9
+	leaq	0x27(%r8), %r10
+	leaq	0x39(%r8), %r11
 	pushq	%r8
 	call_code:
-	call	*%r8
+	call	*%r11
 	popq	%r8
 	addq	$0x8000, %rsp
 	movq	$11, %rax
 	movq	%r8, %rdi
 	movq	-0x10(%rbp), %rsi
 	syscall
-	stload	%rsp
-	addq	$0x18, %rsp
+	movq	-0x8(%rbp), %r8
+	movq	-0x10(%rbp), %r9
+	movq	-0x18(%rbp), %r10
 	movq	%rbp, %rsp
 	popq	%rbx
 	popq	%rbp
@@ -761,30 +925,37 @@ runcode:
 .text
 .global brainfuck
 brainfuck:
-	pushq	%rbp
 	pushq	%rbx
 	pushq	%r12
 	pushq	%r13
 	pushq	%r14
 	pushq	%r15
+	pushq	%rbp
 	movq	%rsp, %rbp
+	subq	$0x18, %rsp
 	pushq	%rdi
-	call	stinit
-	movq	$0x10000, %rdi
-	call	stresize
-	movq	$0, %r9
+		call	stinit
+		movq	%r8, -0x8(%rbp)
+		movq	%r9, -0x10(%rbp)
+		movq	%r10, -0x18(%rbp)
+		call	stinit
 	popq	%rdi
+	movq	$0, %r15
 	call	base_parser
-	cmpb	$0, -0x1(%rdi)
+	cmpq	$0, %r15
 	jne		brainfuck_end	
+	call	stdel
+	movq	-0x8(%rbp), %r8
+	movq	-0x10(%rbp), %r9
+	movq	-0x18(%rbp), %r10
 	call	runcode
 	call	stdel
 	brainfuck_end:
-	movq %rbp, %rsp
+	movq	%rbp, %rsp
+	popq	%rbp
 	popq	%r15
 	popq	%r14
 	popq	%r13
 	popq	%r12
 	popq	%rbx
-	popq %rbp
 	ret

@@ -1,11 +1,14 @@
-# %rax - temp (read/write syscall)
+# %rax - temp (read/write syscall) (mult add val)
 # %rbx - tape pointer
 # %rcx - temp (mult const)
-# %rdx - temp (read/write count)
-# %rsi - temp (read/write ptr)
+# %rdx - write buffer pos
+# %rsi - write buffer begin
 # %rdi - temp (read/write fd)
 # %rsp - used
 # %rbp - used
+# %r8 - pointer to read_char (and mmap begin)
+# %r9 - pointer to write_char
+# %r9 - pointer to write_char_flush
 
 .data
 
@@ -249,26 +252,26 @@ save_mult:
 			jmp		mult_optimise
 
 			save_mult_default:
-			#	imull	VAL, %ecx, %edx
+			#	imull	VAL, %ecx, %eax
 			addq	$3, %r9
 			call	stinc
-			movw	$0xD16B, -3(%r8, %r9)
+			movw	$0xC16B, -3(%r8, %r9)
 			movb	%cl, -1(%r8, %r9)
 			jmp		save_mult_write_add
 			save_mult_pow2:
 			bsfq	%rcx, %rax
-			#	movb	%cl, %dl
-			#	salq	logVAL, %dl
+			#	movb	%cl, %al
+			#	salb	logVAL, %al
 			addq	$5, %r9
 			call	stinc
-			movl	$0xE2C0CA88, -5(%r8, %r9)
+			movl	$0xE0C0C888, -5(%r8, %r9)
 			movb	%al, -1(%r8, %r9)
 
 			save_mult_write_add:
-			#	addb	%dl, OFFSET(%rbx)
+			#	addb	%al, OFFSET(%rbx)
 			addq	$6, %r9
 			call	stinc
-			movw	$0x9300, -6(%r8, %r9)
+			movw	$0x8300, -6(%r8, %r9)
 			jmp		save_mult_write_end
 			save_mult_1:
 			#	addb	%cl, OFFSET(%rbx)
@@ -336,51 +339,33 @@ save_close:
 .global save_write
 save_write:
 	stswap
-	movq	-0x10(%rbp), %rax
-	#	xorl	%eax, %eax
-	#	movb	$1, %al
-	#	movl	%eax, %edx
-	#	movl	%eax, %edi
-	#	leal	OFFSET(%rbx), %esi
-	#	syscall
-	addq	$12, %r9
+	#	call	*%r9
+	addq	$3, %r9
 	call	stinc
-	movl	$0xC0C6C031, -12(%r8, %r9)
-	movl	$0x89C28901, -8(%r8, %r9)
-	movl	$0xB38D48C7, -4(%r8, %r9)
-	addq	$6, %r9
-	call	stinc
-	movl	%eax, -6(%r8, %r9)
-	movw	$0x050F, -2(%r8, %r9)
+	movw	$0xFF41, -3(%r8, %r9)
+	movb	$0xD1, -1(%r8, %r9)
 	stswap
 	ret
 
 .global save_read
 save_read:
 	stswap
-	movq	-0x10(%rbp), %rax
-	#	xorl	%eax, %eax
-	#	xorl	%edi, %edi
-	#	xorl	%edx, %edx
-	#	movl	$1, %edx
-	#	leab	OFFSET(%rbx), %esi
-	#	syscall
-	addq	$12, %r9
+	#	call	*%r8
+	addq	$3, %r9
 	call	stinc
-	movl	$0xFF31C031, -12(%r8, %r9)
-	movl	$0xC2C6D231, -8(%r8, %r9)
-	movl	$0xB38D4801, -4(%r8, %r9)
-	addq	$6, %r9
-	call	stinc
-	movl	%eax, -6(%r8, %r9)
-	movw	$0x050F, -2(%r8, %r9)
+	movw	$0xFF41, -3(%r8, %r9)
+	movb	$0xD0, -1(%r8, %r9)
 	stswap
 	ret
 
 .global save_ret
 save_ret:
 	stswap
-	stpushb	$0xC3	# near ret
+	#	call	*%r10
+	#	ret
+	addq	$4, %r9
+	call	stinc
+	movl	$0xC3D2FF41, -4(%r8, %r9)
 	stswap
 	ret
 
